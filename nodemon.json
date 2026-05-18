@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    ".wwebjs_auth/*",
+    "node_modules/*",
+    ".git/*"
+  ],
+  "watch": ["src"],
+  "ext": "ts,js,json"
+}

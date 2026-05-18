@@ -1,0 +1,267 @@
+import { query } from '../../infrastructure/database/pool';
+import { User, Platform, UserStatus } from '../../types/models';
+import { normalizeInterests } from '../../utils/interests';
+
+export class UserService {
+  /**
+   * Find a user by their platform-specific ID or create a new one if they don't exist.
+   */
+  async getOrCreateUser(externalId: string, platform: Platform, username?: string): Promise<User> {
+    const sanitizedUsername = username ? this.sanitize(username) : undefined;
+    
+    const findSql = `
+      SELECT * FROM users 
+      WHERE external_id = $1 AND platform = $2
+    `;
+    const findResult = await query(findSql, [externalId, platform]);
+
+    if (findResult.rows.length > 0) {
+      const user = findResult.rows[0];
+      // Update username if it changed
+      if (sanitizedUsername && user.username !== sanitizedUsername) {
+        await query('UPDATE users SET username = $1 WHERE id = $2', [sanitizedUsername, user.id]);
+        user.username = sanitizedUsername;
+      }
+      return this.mapRowToUser(user);
+    }
+
+    const createSql = `
+      INSERT INTO users (external_id, platform, username, status)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `;
+    const createResult = await query(createSql, [externalId, platform, sanitizedUsername, UserStatus.IDLE]);
+    return this.mapRowToUser(createResult.rows[0]);
+  }
+
+  /**
+   * Simple HTML sanitization to prevent XSS in dashboard
+   */
+  private sanitize(str: string): string {
+    return str.replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[m] || m)).substring(0, 100);
+  }
+
+  /**
+   * Update a user's interests.
+   */
+  async updateInterests(userId: string, interests: string[]): Promise<void> {
+    const results = normalizeInterests(interests);
+    const normalized = results.map(r => r.cluster).filter(c => c !== null) as string[];
+    
+    const sql = `
+      UPDATE users 
+      SET interests = $1, normalized_interests = $2 
+      WHERE id = $3
+    `;
+    await query(sql, [interests, normalized, userId]);
+  }
+
+  /**
+   * Update a user's status (e.g., idle -> searching).
+   */
+  async updateStatus(userId: string, status: UserStatus, currentMatchId: string | null = null): Promise<void> {
+    const sql = `
+      UPDATE users 
+      SET status = $1, current_match_id = $2 
+      WHERE id = $3
+    `;
+    await query(sql, [status, currentMatchId, userId]);
+  }
+
+  /**
+   * Update a user's bio.
+   */
+  async updateBio(userId: string, bio: string): Promise<void> {
+    await query('UPDATE users SET bio = $1 WHERE id = $2', [bio, userId]);
+  }
+
+  /**
+   * Update a user's gender.
+   */
+  async updateGender(userId: string, gender: string): Promise<void> {
+    await query('UPDATE users SET gender = $1 WHERE id = $2', [gender, userId]);
+  }
+
+  /**
+   * Update a user's purpose.
+   */
+  async updatePurpose(userId: string, purpose: string): Promise<void> {
+    await query('UPDATE users SET purpose = $1 WHERE id = $2', [purpose, userId]);
+  }
+
+  /**
+   * Update a user's onboarding step.
+   */
+  async updateOnboardingStep(userId: string, step: string): Promise<void> {
+    await query('UPDATE users SET onboarding_step = $1 WHERE id = $2', [step, userId]);
+  }
+
+  /**
+   * Block a user.
+   */
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    const sql = `
+      INSERT INTO blocked_users (blocker_id, blocked_id)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+    `;
+    await query(sql, [blockerId, blockedId]);
+  }
+
+  /**
+   * Send a friend request.
+   */
+  async sendFriendRequest(userId: string, contactId: string): Promise<void> {
+    const sql = `
+      INSERT INTO contacts (user_id, contact_id, status)
+      VALUES ($1, $2, 'pending')
+      ON CONFLICT DO NOTHING
+    `;
+    await query(sql, [userId, contactId]);
+  }
+
+  /**
+   * Accept a friend request.
+   */
+  async acceptFriendRequest(userId: string, contactId: string): Promise<void> {
+    const sql = `
+      UPDATE contacts 
+      SET status = 'accepted' 
+      WHERE (user_id = $1 AND contact_id = $2) 
+      OR (user_id = $2 AND contact_id = $1)
+    `;
+    await query(sql, [userId, contactId]);
+    
+    // Also ensure the reverse relationship exists as accepted
+    const ensureSql = `
+      INSERT INTO contacts (user_id, contact_id, status)
+      VALUES ($1, $2, 'accepted'), ($2, $1, 'accepted')
+      ON CONFLICT (user_id, contact_id) DO UPDATE SET status = 'accepted'
+    `;
+    await query(ensureSql, [userId, contactId]);
+  }
+
+  /**
+   * Decline a friend request.
+   */
+  async declineFriendRequest(userId: string, contactId: string): Promise<void> {
+    const sql = `
+      DELETE FROM contacts 
+      WHERE (user_id = $1 AND contact_id = $2 AND status = 'pending')
+      OR (user_id = $2 AND contact_id = $1 AND status = 'pending')
+    `;
+    await query(sql, [userId, contactId]);
+  }
+
+  /**
+   * Get all accepted contacts for a user.
+   */
+  async getContacts(userId: string): Promise<User[]> {
+    const sql = `
+      SELECT u.* FROM users u
+      JOIN contacts c ON u.id = c.contact_id
+      WHERE c.user_id = $1 AND c.status = 'accepted'
+    `;
+    const result = await query(sql, [userId]);
+    return result.rows.map(row => this.mapRowToUser(row));
+  }
+
+  /**
+   * Check if two users are contacts.
+   */
+  async areContacts(userId1: string, userId2: string): Promise<boolean> {
+    const sql = `
+      SELECT 1 FROM contacts 
+      WHERE user_id = $1 AND contact_id = $2 AND status = 'accepted'
+    `;
+    const result = await query(sql, [userId1, userId2]);
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Get a pending friend request for a user.
+   */
+  async getPendingFriendRequest(userId: string): Promise<string | null> {
+    const sql = `
+      SELECT user_id FROM contacts 
+      WHERE contact_id = $1 AND status = 'pending' 
+      LIMIT 1
+    `;
+    const result = await query(sql, [userId]);
+    return result.rows.length > 0 ? result.rows[0].user_id : null;
+  }
+
+  /**
+   * Delete a user profile.
+   */
+  async deleteUser(userId: string): Promise<void> {
+    // Delete all related data to satisfy foreign key constraints
+    await query('DELETE FROM contacts WHERE user_id = $1 OR contact_id = $1', [userId]);
+    await query('DELETE FROM blocked_users WHERE blocker_id = $1 OR blocked_id = $1', [userId]);
+    await query('DELETE FROM matches WHERE user_1_id = $1 OR user_2_id = $1', [userId]);
+    await query('DELETE FROM reports WHERE reporter_id = $1 OR reported_id = $1', [userId]);
+    
+    // Finally delete the user
+    await query('DELETE FROM users WHERE id = $1', [userId]);
+  }
+
+  /**
+   * Report a user.
+   */
+  async reportUser(reporterId: string, reportedId: string, reason: string, chatLog: any[] = []): Promise<void> {
+    await query('INSERT INTO reports (reporter_id, reported_id, reason, chat_log) VALUES ($1, $2, $3, $4)', [reporterId, reportedId, reason, JSON.stringify(chatLog)]);
+    
+    // Auto-ban logic: if user has 3 or more reports, ban them
+    const countResult = await query('SELECT count(*) FROM reports WHERE reported_id = $1', [reportedId]);
+    if (parseInt(countResult.rows[0].count) >= 3) {
+      await query('UPDATE users SET is_banned = TRUE WHERE id = $1', [reportedId]);
+    }
+  }
+
+  /**
+   * Save user feedback.
+   */
+  async saveFeedback(userId: string, content: string): Promise<void> {
+    await query('INSERT INTO feedbacks (user_id, content) VALUES ($1, $2)', [userId, content]);
+  }
+
+  /**
+   * Map database row to User interface.
+   */
+  private mapRowToUser(row: any): User {
+    return {
+      id: row.id,
+      externalId: row.external_id,
+      platform: row.platform as Platform,
+      username: row.username,
+      bio: row.bio,
+      gender: row.gender,
+      purpose: row.purpose,
+      onboardingStep: row.onboarding_step || 'start',
+      interests: row.interests || [],
+      normalizedInterests: row.normalized_interests || [],
+      status: row.status as UserStatus,
+      currentMatchId: row.current_match_id,
+      isBanned: row.is_banned || false,
+      blockedUserIds: [], // These could be loaded via a separate join if needed
+      contactIds: [],
+      pendingContactIds: [],
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Get a user by internal UUID.
+   */
+  async getUserById(id: string): Promise<User | null> {
+    const sql = 'SELECT * FROM users WHERE id = $1';
+    const result = await query(sql, [id]);
+    return result.rows.length > 0 ? this.mapRowToUser(result.rows[0]) : null;
+  }
+}
