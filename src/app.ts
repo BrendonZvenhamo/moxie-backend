@@ -15,7 +15,7 @@ import { IncomingMessage, IPlatformAdapter } from './core/interfaces/platform';
 dotenv.config();
 
 async function bootstrap() {
-  console.log('🚀 [VERSION 1.0.6] PRODUCTION BOOT...');
+  console.log('🚀 [VERSION 1.0.7] PRODUCTION BOOT...');
 
   const userService = new UserService();
   const matchmakingService = new MatchmakingService(userService);
@@ -28,23 +28,11 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   app.use(bodyParser.json({ limit: '50mb' }));
 
-  // --- 1. PUBLIC ROUTES (Zero Auth) ---
-  app.get('/version', (req, res) => res.send('Moxie v1.0.6 is Online'));
-
+  // --- 1. PUBLIC ROUTES ---
+  app.get('/version', (req, res) => res.send('Moxie v1.0.7 Online'));
   app.get('/privacy', (req, res) => {
-    res.send(`
-      <html>
-      <head><title>Moxie Privacy</title><style>body{font-family:sans-serif;padding:40px;line-height:1.6;max-width:800px;margin:auto;}</style></head>
-      <body>
-        <h1>🛡️ Moxie Privacy Policy</h1>
-        <p>We connect people anonymously. We do <b>NOT</b> store your private messages.</p>
-        <p><b>Data:</b> We only store your platform ID and profile settings to facilitate matches.</p>
-        <p>© 2026 Moxie</p>
-      </body>
-      </html>
-    `);
+    res.send(`<html><body><h1>🛡️ Privacy Policy</h1><p>We do NOT store messages.</p></body></html>`);
   });
-
   app.get('/webhooks/whatsapp', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN) {
       return res.send(req.query['hub.challenge']);
@@ -52,48 +40,65 @@ async function bootstrap() {
     res.sendStatus(403);
   });
 
-  // --- 2. AUTH MIDDLEWARE (For Dashboard Only) ---
+  // --- 2. AUTH ---
   const auth = (req: Request, res: Response, next: NextFunction) => {
     const password = process.env.DASHBOARD_PASSWORD;
-    const provided = req.query.pw || req.headers['x-dashboard-pw'];
-    if (provided === password && password) return next();
+    if ((req.query.pw || req.headers['x-dashboard-pw']) === password && password) return next();
     res.status(403).send('<h1>🚫 Unauthorized</h1>');
   };
 
-  // --- 3. PROTECTED ROUTES ---
+  // --- 3. PROTECTED ---
   app.get('/', auth, (req, res) => res.send('<h1>🦁 Moxie Admin Active</h1>'));
   app.get('/api/stats', auth, async (req, res) => res.json(await dashboardService.getStats()));
 
-  // --- 4. SERVER & ADAPTERS ---
-  app.listen(port, () => console.log(`🚀 Port ${port}`));
+  app.listen(port, () => console.log(`🚀 Server on ${port}`));
 
+  // --- 4. ADAPTERS (WITH SAFETY) ---
   const adapters: IPlatformAdapter[] = [];
+  
+  // Setup Telegram
   if (process.env.TELEGRAM_BOT_TOKEN) {
-    const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
-    adapters.push(tg);
-    relayService.registerAdapter(Platform.TELEGRAM, tg);
+    try {
+      const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
+      adapters.push(tg);
+      relayService.registerAdapter(Platform.TELEGRAM, tg);
+      console.log('✅ Telegram Adapter registered.');
+    } catch (e) { console.error('❌ Telegram setup failed:', e); }
   }
-  const wa = new OfficialWhatsAppAdapter();
-  adapters.push(wa);
-  relayService.registerAdapter(Platform.WHATSAPP, wa);
+
+  // Setup WhatsApp
+  try {
+    const wa = new OfficialWhatsAppAdapter();
+    adapters.push(wa);
+    relayService.registerAdapter(Platform.WHATSAPP, wa);
+    console.log('✅ WhatsApp Adapter registered.');
+  } catch (e) { console.error('❌ WhatsApp setup failed:', e); }
 
   app.post('/webhooks/whatsapp', async (req, res) => {
-    await wa.handleWebhookPayload(req.body);
-    res.sendStatus(200);
+    try {
+      const wa = adapters.find(a => a.getPlatform() === Platform.WHATSAPP) as OfficialWhatsAppAdapter;
+      if (wa) await wa.handleWebhookPayload(req.body);
+      res.sendStatus(200);
+    } catch (err) { res.sendStatus(500); }
   });
 
-  const messageHandler = (adapter: IPlatformAdapter) => async (msg: IncomingMessage) => {
-    if (!rateLimiter.isAllowed(msg.externalId)) return;
-    if (await commandHandler.handle(msg, adapter)) return;
-    await relayService.relayMessage(msg, adapter.getPlatform());
-  };
-
+  // Initialize all safely
   for (const adapter of adapters) {
-    adapter.onMessage(messageHandler(adapter));
-    adapter.onTypingState(async (id) => relayService.relayTypingState(id, adapter.getPlatform()));
-    adapter.onButtonSelected(async (id, btn) => commandHandler.handleButton(id, btn, adapter));
-    await adapter.initialize();
+    try {
+      adapter.onMessage(async (msg) => {
+        if (!rateLimiter.isAllowed(msg.externalId)) return;
+        if (await commandHandler.handle(msg, adapter)) return;
+        await relayService.relayMessage(msg, adapter.getPlatform());
+      });
+      adapter.onTypingState(async (id) => relayService.relayTypingState(id, adapter.getPlatform()));
+      adapter.onButtonSelected(async (id, btn) => commandHandler.handleButton(id, btn, adapter));
+      
+      await adapter.initialize();
+      console.log(`🚀 ${adapter.getPlatform()} is LIVE!`);
+    } catch (error: any) {
+      console.error(`⚠️ Failed to start ${adapter.getPlatform()}:`, error?.message || error);
+    }
   }
 }
 
-bootstrap().catch(err => { console.error(err); process.exit(1); });
+bootstrap().catch(err => { console.error('💥 FATAL:', err); });
