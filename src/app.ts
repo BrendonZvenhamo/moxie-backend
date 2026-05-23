@@ -10,10 +10,12 @@ import { RateLimiter } from './utils/rate-limiter';
 import { TelegramAdapter } from './adapters/telegram/adapter';
 import { OfficialWhatsAppAdapter } from './adapters/whatsapp/official';
 import { Platform } from './types/models';
-import { IncomingMessage, IPlatformAdapter } from './core/interfaces/platform';
 
 dotenv.config();
 
+/**
+ * Returns the visual HTML for the Admin Dashboard.
+ */
 const DASHBOARD_HTML = (password: string) => {
   return [
     '<!DOCTYPE html>',
@@ -41,7 +43,7 @@ const DASHBOARD_HTML = (password: string) => {
     '<body>',
     '  <div class="container">',
     '    <header>',
-    '      <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.7</span></h1>',
+    '      <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.8</span></h1>',
     '      <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
     '    </header>',
     '    <div id="stats" class="stats-grid">',
@@ -66,6 +68,7 @@ const DASHBOARD_HTML = (password: string) => {
     '      async function loadStats() {',
     '        try {',
     '          var res = await fetch("/api/stats?pw=" + pw);',
+    '          if (!res.ok) { document.body.innerHTML = "<h1>Unauthorized</h1>"; return; }',
     '          var data = await res.json();',
     '          document.getElementById("totalUsers").textContent = data.totalUsers;',
     '          document.getElementById("activeMatches").textContent = data.activeMatches;',
@@ -101,7 +104,7 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('🚀 [VERSION 1.0.7] PRODUCTION BOOT...');
+  console.log('BOOTSTRAP STARTING...');
 
   const userService = new UserService();
   const matchmakingService = new MatchmakingService(userService);
@@ -114,10 +117,18 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   app.use(bodyParser.json({ limit: '50mb' }));
 
-  app.get('/version', (req, res) => res.send('Moxie v1.0.7 Online'));
+  // --- 1. PUBLIC ROUTES (Health checks must be public) ---
+  app.get('/health', (req, res) => res.status(200).send('OK'));
+  app.get('/version', (req, res) => res.send('Moxie v1.0.8 Online'));
+  app.get('/', (req, res) => {
+    // Return HTML but JS will check password
+    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
+  });
+  
   app.get('/privacy', (req, res) => {
     res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
   });
+
   app.get('/webhooks/whatsapp', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN) {
       return res.send(req.query['hub.challenge']);
@@ -125,61 +136,65 @@ async function bootstrap() {
     res.sendStatus(403);
   });
 
+  // --- 2. AUTH FOR API ---
   const auth = (req: Request, res: Response, next: NextFunction) => {
     const password = process.env.DASHBOARD_PASSWORD;
-    if ((req.query.pw || req.headers['x-dashboard-pw']) === password && password) return next();
-    res.status(403).send('<h1>Unauthorized</h1>');
+    const provided = req.query.pw || req.headers['x-dashboard-pw'];
+    if (provided === password && password) return next();
+    res.status(401).json({ error: 'Unauthorized' });
   };
 
-  app.get('/', auth, (req, res) => {
-    res.send(DASHBOARD_HTML(process.env.DASHBOARD_PASSWORD || ''));
-  });
   app.get('/api/stats', auth, async (req, res) => res.json(await dashboardService.getStats()));
 
-  app.listen(port, () => console.log('🚀 Server is up on port ' + port));
+  // BIND TO PORT IMMEDIATELY
+  const server = app.listen(port, () => {
+    console.log('HTTP Server listening on port ' + port);
+  });
 
-  const adapters: IPlatformAdapter[] = [];
+  // --- 3. ADAPTERS (ASYNC) ---
+  const adapters: any[] = [];
   
-  if (process.env.TELEGRAM_BOT_TOKEN) {
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {
     try {
       const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
       adapters.push(tg);
       relayService.registerAdapter(Platform.TELEGRAM, tg);
-      console.log('✅ Telegram Adapter registered.');
-    } catch (e) { console.error('❌ Telegram setup failed:', e); }
+    } catch (e) { console.error('Telegram init failed'); }
   }
 
   try {
     const wa = new OfficialWhatsAppAdapter();
     adapters.push(wa);
     relayService.registerAdapter(Platform.WHATSAPP, wa);
-    console.log('✅ WhatsApp Adapter registered.');
-  } catch (e) { console.error('❌ WhatsApp setup failed:', e); }
+  } catch (e) { console.error('WhatsApp init failed'); }
 
   app.post('/webhooks/whatsapp', async (req, res) => {
     try {
-      const wa = adapters.find(a => a.getPlatform() === Platform.WHATSAPP) as OfficialWhatsAppAdapter;
+      const wa = adapters.find(a => a.getPlatform && a.getPlatform() === Platform.WHATSAPP);
       if (wa) await wa.handleWebhookPayload(req.body);
       res.sendStatus(200);
     } catch (err) { res.sendStatus(500); }
   });
 
-  for (const adapter of adapters) {
-    try {
-      adapter.onMessage(async (msg) => {
-        if (!rateLimiter.isAllowed(msg.externalId)) return;
-        if (await commandHandler.handle(msg, adapter)) return;
-        await relayService.relayMessage(msg, adapter.getPlatform());
-      });
-      adapter.onTypingState(async (id) => relayService.relayTypingState(id, adapter.getPlatform()));
-      adapter.onButtonSelected(async (id, btn) => commandHandler.handleButton(id, btn, adapter));
-      
-      await adapter.initialize();
-      console.log('🚀 ' + adapter.getPlatform() + ' is LIVE!');
-    } catch (error: any) {
-      console.error('⚠️ Failed to start ' + adapter.getPlatform() + ':', error?.message || error);
+  // Start adapters in background to not block port binding
+  (async () => {
+    for (const adapter of adapters) {
+      try {
+        adapter.onMessage(async (msg: any) => {
+          if (!rateLimiter.isAllowed(msg.externalId)) return;
+          if (await commandHandler.handle(msg, adapter)) return;
+          await relayService.relayMessage(msg, adapter.getPlatform());
+        });
+        if (adapter.onTypingState) adapter.onTypingState(async (id: string) => relayService.relayTypingState(id, adapter.getPlatform()));
+        if (adapter.onButtonSelected) adapter.onButtonSelected(async (id: string, btn: string) => commandHandler.handleButton(id, btn, adapter));
+        
+        await adapter.initialize();
+        console.log(adapter.getPlatform() + ' initialized');
+      } catch (error) {
+        console.error('Adapter startup failed');
+      }
     }
-  }
+  })();
 }
 
-bootstrap().catch(err => { console.error('💥 FATAL:', err); });
+bootstrap().catch(err => { console.error('FATAL ERROR DURING BOOTSTRAP'); });
