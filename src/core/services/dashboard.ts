@@ -49,7 +49,7 @@ export class DashboardService {
       FROM reports r
       JOIN users u1 ON r.reporter_id = u1.id
       JOIN users u2 ON r.reported_id = u2.id
-      ORDER BY r.create_at DESC
+      ORDER BY r.created_at DESC
       LIMIT 10
     `);
 

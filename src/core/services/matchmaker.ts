@@ -17,7 +17,8 @@ export class MatchmakingService {
     return withTransaction(async (client) => {
       // Find another user who is 'searching', not the same user, 
       // has at least one overlapping NORMALIZED interest,
-      // has a compatible purpose, and is NOT banned.
+      // has a compatible purpose, is NOT banned,
+      // and satisfies GENDER PREFERENCES for BOTH parties.
       const findMatchSql = `
         SELECT *, (
           SELECT count(*) 
@@ -32,6 +33,13 @@ export class MatchmakingService {
         AND (
           purpose = 'both' OR $3 = 'both' OR purpose = $3
         )
+        -- Gender Preference Logic
+        AND (
+          $4 = 'both' OR $4 = gender
+        )
+        AND (
+          pref_gender = 'both' OR pref_gender = $5
+        )
         AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
         AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
         ORDER BY overlap_count DESC
@@ -39,7 +47,13 @@ export class MatchmakingService {
         FOR UPDATE SKIP LOCKED;
       `;
 
-      const result = await client.query(findMatchSql, [userId, user.normalizedInterests, user.purpose || 'both']);
+      const result = await client.query(findMatchSql, [
+        userId, 
+        user.normalizedInterests, 
+        user.purpose || 'both',
+        user.prefGender || 'both',
+        user.gender || 'other'
+      ]);
 
       if (result.rows.length === 0) {
         // No match found, ensure user is in 'searching' status

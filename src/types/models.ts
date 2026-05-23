@@ -16,6 +16,7 @@ export interface User {
   username?: string;
   bio?: string;
   gender?: string;
+  prefGender?: string;
   purpose?: string;
   onboardingStep: string;
   interests: string[];

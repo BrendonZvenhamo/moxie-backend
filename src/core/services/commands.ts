@@ -181,6 +181,24 @@ export class CommandHandler {
       case 'gender_other':
         const gender = buttonId.split('_')[1];
         await this.userService.updateGender(user.id, gender);
+        await this.userService.updateOnboardingStep(user.id, 'pref_gender');
+        await adapter.sendMessage(externalId, {
+          type: 'buttons',
+          title: '🎯 STEP 4: PREFERENCE',
+          body: 'Who would you like to talk to?',
+          buttons: [
+            { id: 'pref_male', text: '👨 Men' },
+            { id: 'pref_female', text: '👩 Women' },
+            { id: 'pref_both', text: '🌟 Anyone' }
+          ]
+        });
+        break;
+
+      case 'pref_male':
+      case 'pref_female':
+      case 'pref_both':
+        const pref = buttonId.split('_')[1];
+        await this.userService.updatePrefGender(user.id, pref);
         await this.userService.updateOnboardingStep(user.id, 'completed');
         await adapter.sendMessage(externalId, {
           type: 'buttons',
@@ -220,7 +238,7 @@ export class CommandHandler {
       case 'view_profile':
         await adapter.sendMessage(externalId, {
           type: 'text',
-          content: `👤 *Your Profile*\n\nUsername: ${user.username}\nGender: ${user.gender || 'Not set'}\nPurpose: ${user.purpose || 'Not set'}\nInterests: ${user.interests.join(', ') || 'None'}`
+          content: `👤 *Your Profile*\n\nUsername: ${user.username}\nGender: ${user.gender || 'Not set'}\nInterested in: ${user.prefGender === 'male' ? 'Men 👨' : (user.prefGender === 'female' ? 'Women 👩' : 'Anyone 🌟')}\nPurpose: ${user.purpose || 'Not set'}\nInterests: ${user.interests.join(', ') || 'None'}`
         });
         await this.showMainMenu(externalId, adapter);
         break;
@@ -294,6 +312,34 @@ export class CommandHandler {
           ]
         });
       }
+      return true;
+    }
+
+    if (step === 'gender') {
+      await adapter.sendMessage(externalId, {
+        type: 'buttons',
+        title: '⚧ STEP 3: GENDER',
+        body: 'Please select your gender using the buttons below:',
+        buttons: [
+          { id: 'gender_male', text: '👨 Male' },
+          { id: 'gender_female', text: '👩 Female' },
+          { id: 'gender_other', text: '🌈 Other' }
+        ]
+      });
+      return true;
+    }
+
+    if (step === 'pref_gender') {
+      await adapter.sendMessage(externalId, {
+        type: 'buttons',
+        title: '🎯 STEP 4: PREFERENCE',
+        body: 'Who would you like to talk to? Please use the buttons:',
+        buttons: [
+          { id: 'pref_male', text: '👨 Men' },
+          { id: 'pref_female', text: '👩 Women' },
+          { id: 'pref_both', text: '🌟 Anyone' }
+        ]
+      });
       return true;
     }
 

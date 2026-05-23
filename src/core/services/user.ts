@@ -89,6 +89,13 @@ export class UserService {
   }
 
   /**
+   * Update a user's gender preference.
+   */
+  async updatePrefGender(userId: string, gender: string): Promise<void> {
+    await query('UPDATE users SET pref_gender = $1 WHERE id = $2', [gender, userId]);
+  }
+
+  /**
    * Update a user's purpose.
    */
   async updatePurpose(userId: string, purpose: string): Promise<void> {
@@ -242,6 +249,7 @@ export class UserService {
       username: row.username,
       bio: row.bio,
       gender: row.gender,
+      prefGender: row.pref_gender,
       purpose: row.purpose,
       onboardingStep: row.onboarding_step || 'start',
       interests: row.interests || [],

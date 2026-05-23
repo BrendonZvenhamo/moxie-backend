@@ -16,6 +16,7 @@ CREATE TABLE users (
     username TEXT,
     bio TEXT,
     gender TEXT,
+    pref_gender TEXT,
     purpose TEXT,
     onboarding_step TEXT DEFAULT 'start',
     interests TEXT[] DEFAULT '{}',
@@ -62,6 +63,14 @@ CREATE TABLE contacts (
     status TEXT DEFAULT 'pending', -- 'pending', 'accepted'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, contact_id)
+);
+
+-- Feedbacks Table
+CREATE TABLE feedbacks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id),
+    content TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for performance
