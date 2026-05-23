@@ -14,6 +14,9 @@ import { IncomingMessage, IPlatformAdapter } from './core/interfaces/platform';
 
 dotenv.config();
 
+/**
+ * Returns the visual HTML for the Admin Dashboard.
+ */
 const DASHBOARD_HTML = (password: string) => `
 <!DOCTYPE html>
 <html>
@@ -34,8 +37,8 @@ const DASHBOARD_HTML = (password: string) => `
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 12px; color: #65676b; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #ebedf0; }
     td { padding: 10px; border-bottom: 1px solid #f0f2f5; font-size: 14px; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
     .refresh-btn { background: #1877f2; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    .refresh-btn:hover { background: #166fe5; }
   </style>
 </head>
 <body>
@@ -44,76 +47,52 @@ const DASHBOARD_HTML = (password: string) => `
       <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.7</span></h1>
       <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>
     </header>
-
     <div id="stats" class="stats-grid">
       <div class="card"><h3>Total Users</h3><div class="value" id="totalUsers">...</div></div>
       <div class="card"><h3>Active Matches</h3><div class="value" id="activeMatches">...</div></div>
       <div class="card"><h3>Searching</h3><div class="value" id="searchingUsers">...</div></div>
       <div class="card"><h3>Matched</h3><div class="value" id="matchedUsers">...</div></div>
     </div>
-
     <div class="section">
       <h2>Recent Matches</h2>
       <table>
-        <thead>
-          <tr><th>Started</th><th>User 1</th><th>User 2</th><th>Interests</th></tr>
-        </thead>
+        <thead><tr><th>Started</th><th>User 1</th><th>User 2</th><th>Interests</th></tr></thead>
         <tbody id="recentMatches"></tbody>
       </table>
     </div>
-
-    <div class="section">
-      <h2>Recent Feedback</h2>
-      <div id="feedbacks"></div>
-    </div>
-
-    <div class="section">
-      <h2>Recent Reports</h2>
-      <div id="reports"></div>
-    </div>
+    <div class="section"><h2>Recent Feedback</h2><div id="feedbacks"></div></div>
+    <div class="section"><h2>Recent Reports</h2><div id="reports"></div></div>
   </div>
-
   <script>
-    const pw = '${password}';
+    const pw = "${password}";
     async function loadStats() {
       try {
-        const res = await fetch('/api/stats?pw=' + pw);
+        const res = await fetch("/api/stats?pw=" + pw);
         const data = await res.json();
-        
-        document.getElementById('totalUsers').textContent = data.totalUsers;
-        document.getElementById('activeMatches').textContent = data.activeMatches;
-        document.getElementById('searchingUsers').textContent = data.searchingUsers;
-        document.getElementById('matchedUsers').textContent = data.matchedUsers;
-
-        const recentMatchesHtml = data.recentMatches.map(m => \`
-          <tr>
-            <td>\${new Date(m.started_at).toLocaleString()}</td>
-            <td>\${m.user1}</td>
-            <td>\${m.user2}</td>
-            <td><small>\${m.shared_interests.join(', ')}</small></td>
-          </tr>
-        \`).join('');
-        document.getElementById('recentMatches').innerHTML = recentMatchesHtml || '<tr><td colspan="4">No recent matches</td></tr>';
-
-        const feedbackHtml = data.feedbacks.map(f => \`
-          <div style="padding: 10px; border-bottom: 1px solid #f0f2f5;">
-            <strong>\${f.username}</strong> <small style="color: #65676b;">\${new Date(f.created_at).toLocaleString()}</small>
-            <p style="margin: 5px 0 0 0;">\${f.content}</p>
-          </div>
-        \`).join('');
-        document.getElementById('feedbacks').innerHTML = feedbackHtml || '<p>No feedback yet</p>';
-
-        const reportHtml = data.reports.map(r => \`
-          <div style="padding: 10px; border-bottom: 1px solid #f0f2f5; color: #d93025;">
-            <strong>\${r.reporter}</strong> reported <strong>\${r.reported}</strong>
-            <p style="margin: 5px 0 0 0;">Reason: \${r.reason}</p>
-          </div>
-        \`).join('');
-        document.getElementById('reports').innerHTML = reportHtml || '<p>No reports</p>';
-
-      } catch (err) {
-        console.error('Failed to load stats:', err);
-      }
+        document.getElementById("totalUsers").textContent = data.totalUsers;
+        document.getElementById("activeMatches").textContent = data.activeMatches;
+        document.getElementById("searchingUsers").textContent = data.searchingUsers;
+        document.getElementById("matchedUsers").textContent = data.matchedUsers;
+        const recentMatchesHtml = data.recentMatches.map(function(m) {
+          return "<tr><td>" + new Date(m.started_at).toLocaleString() + "</td>" +
+            "<td>" + (m.user1 || "Anon") + "</td>" +
+            "<td>" + (m.user2 || "Anon") + "</td>" +
+            "<td><small>" + (m.shared_interests || []).join(", ") + "</small></td></tr>";
+        }).join("");
+        document.getElementById("recentMatches").innerHTML = recentMatchesHtml || "<tr><td colspan='4'>No recent matches</td></tr>";
+        const feedbackHtml = data.feedbacks.map(function(f) {
+          return "<div style='padding: 10px; border-bottom: 1px solid #f0f2f5;'>" +
+            "<strong>" + (f.username || "Anon") + "</strong> <small style='color: #65676b;'>" + new Date(f.created_at).toLocaleString() + "</small>" +
+            "<p style='margin: 5px 0 0 0;'>" + f.content + "</p></div>";
+        }).join("");
+        document.getElementById("feedbacks").innerHTML = feedbackHtml || "<p>No feedback yet</p>";
+        const reportHtml = data.reports.map(function(r) {
+          return "<div style='padding: 10px; border-bottom: 1px solid #f0f2f5; color: #d93025;'>" +
+            "<strong>" + (r.reporter || "Anon") + "</strong> reported <strong>" + (r.reported || "Anon") + "</strong>" +
+            "<p style='margin: 5px 0 0 0;'>Reason: " + r.reason + "</p></div>";
+        }).join("");
+        document.getElementById("reports").innerHTML = reportHtml || "<p>No reports</p>";
+      } catch (err) { console.error("Failed to load stats:", err); }
     }
     loadStats();
   </script>
@@ -138,7 +117,7 @@ async function bootstrap() {
   // --- 1. PUBLIC ROUTES ---
   app.get('/version', (req, res) => res.send('Moxie v1.0.7 Online'));
   app.get('/privacy', (req, res) => {
-    res.send(\`<html><body><h1>🛡️ Privacy Policy</h1><p>We do NOT store messages.</p></body></html>\`);
+    res.send('<html><body><h1>🛡️ Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
   });
   app.get('/webhooks/whatsapp', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN) {
@@ -160,12 +139,11 @@ async function bootstrap() {
   });
   app.get('/api/stats', auth, async (req, res) => res.json(await dashboardService.getStats()));
 
-  app.listen(port, () => console.log(\`🚀 Server on \${port}\`));
+  app.listen(port, () => console.log('🚀 Server on ' + port));
 
   // --- 4. ADAPTERS (WITH SAFETY) ---
   const adapters: IPlatformAdapter[] = [];
   
-  // Setup Telegram
   if (process.env.TELEGRAM_BOT_TOKEN) {
     try {
       const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
@@ -175,7 +153,6 @@ async function bootstrap() {
     } catch (e) { console.error('❌ Telegram setup failed:', e); }
   }
 
-  // Setup WhatsApp
   try {
     const wa = new OfficialWhatsAppAdapter();
     adapters.push(wa);
@@ -191,7 +168,6 @@ async function bootstrap() {
     } catch (err) { res.sendStatus(500); }
   });
 
-  // Initialize all safely
   for (const adapter of adapters) {
     try {
       adapter.onMessage(async (msg) => {
@@ -203,9 +179,9 @@ async function bootstrap() {
       adapter.onButtonSelected(async (id, btn) => commandHandler.handleButton(id, btn, adapter));
       
       await adapter.initialize();
-      console.log(\`🚀 \${adapter.getPlatform()} is LIVE!\`);
+      console.log('🚀 ' + adapter.getPlatform() + ' is LIVE!');
     } catch (error: any) {
-      console.error(\`⚠️ Failed to start \${adapter.getPlatform()}:\`, error?.message || error);
+      console.error('⚠️ Failed to start ' + adapter.getPlatform() + ':', error?.message || error);
     }
   }
 }
