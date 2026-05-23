@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import express, { Request, Response, NextFunction } from 'express';
 import bodyParser from 'body-parser';
+import { query } from './infrastructure/database/pool';
 import { UserService } from './core/services/user';
 import { MatchmakingService } from './core/services/matchmaker';
 import { CommandHandler } from './core/services/commands';
@@ -12,6 +13,47 @@ import { OfficialWhatsAppAdapter } from './adapters/whatsapp/official';
 import { Platform } from './types/models';
 
 dotenv.config();
+
+/**
+ * Ensures the database schema is up to date for new features.
+ */
+async function syncDatabase() {
+  console.log('Syncing database schema...');
+  try {
+    // 1. Ensure feedbacks table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS feedbacks (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID REFERENCES users(id),
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 2. Ensure reports table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        reporter_id UUID REFERENCES users(id),
+        reported_id UUID REFERENCES users(id),
+        reason TEXT,
+        chat_log JSONB DEFAULT '[]',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 3. Ensure pref_gender column exists in users
+    await query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS pref_gender TEXT,
+      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
+    `);
+
+    console.log('✅ Database sync complete.');
+  } catch (err: any) {
+    console.warn('⚠️ Database sync warning (tables might already exist or need manual setup):', err.message);
+  }
+}
 
 /**
  * Returns the visual HTML for the Admin Dashboard.
@@ -52,7 +94,7 @@ const DASHBOARD_HTML = (password: string) => {
     '  <div id="main-content" style="display:none">',
     '    <div class="container">',
     '      <header>',
-    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.0</span></h1>',
+    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.1</span></h1>',
     '        <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
     '      </header>',
     '      <div id="stats" class="stats-grid">',
@@ -128,7 +170,10 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.0) ---');
+  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.1) ---');
+  
+  // 1. Sync Database first
+  await syncDatabase();
 
   try {
     const userService = new UserService();
@@ -144,28 +189,19 @@ async function bootstrap() {
 
     // Public routes
     app.get('/health', (req, res) => res.status(200).send('OK'));
-    app.get('/version', (req, res) => res.send('Moxie v1.1.0 Online'));
+    app.get('/version', (req, res) => res.send('Moxie v1.1.1 Online'));
     app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
     
     app.get('/privacy', (req, res) => {
       res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
     });
 
-    // API stats with robust auth
+    // API stats
     app.get('/api/stats', async (req, res) => {
       const password = (process.env.DASHBOARD_PASSWORD || '').trim();
       const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
-      
-      if (!password) {
-        console.error('ALERT: DASHBOARD_PASSWORD is not set in environment variables!');
-        return res.status(500).json({ error: 'Server configuration error' });
-      }
-
-      if (provided === password) {
-        return res.json(await dashboardService.getStats());
-      }
-      
-      console.warn('Dashboard access denied: Incorrect password provided.');
+      if (!password) return res.status(500).json({ error: 'Config error' });
+      if (provided === password) return res.json(await dashboardService.getStats());
       res.status(401).json({ error: 'Unauthorized' });
     });
 
