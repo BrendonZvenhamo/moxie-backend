@@ -37,13 +37,14 @@ const DASHBOARD_HTML = (password: string) => {
     '    table { width: 100%; border-collapse: collapse; }',
     '    th { text-align: left; font-size: 12px; color: #65676b; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #ebedf0; }',
     '    td { padding: 10px; border-bottom: 1px solid #f0f2f5; font-size: 14px; }',
+    '    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }',
     '    .refresh-btn { background: #1877f2; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }',
     '  </style>',
     '</head>',
     '<body>',
     '  <div class="container">',
     '    <header>',
-    '      <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.8</span></h1>',
+    '      <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.9</span></h1>',
     '      <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
     '    </header>',
     '    <div id="stats" class="stats-grid">',
@@ -104,97 +105,102 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('BOOTSTRAP STARTING...');
-
-  const userService = new UserService();
-  const matchmakingService = new MatchmakingService(userService);
-  const relayService = new RelayService(userService, matchmakingService);
-  const commandHandler = new CommandHandler(userService, matchmakingService, relayService);
-  const dashboardService = new DashboardService();
-  const rateLimiter = new RateLimiter();
-
-  const app = express();
-  const port = process.env.PORT || 3000;
-  app.use(bodyParser.json({ limit: '50mb' }));
-
-  // --- 1. PUBLIC ROUTES (Health checks must be public) ---
-  app.get('/health', (req, res) => res.status(200).send('OK'));
-  app.get('/version', (req, res) => res.send('Moxie v1.0.8 Online'));
-  app.get('/', (req, res) => {
-    // Return HTML but JS will check password
-    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
-  });
-  
-  app.get('/privacy', (req, res) => {
-    res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
-  });
-
-  app.get('/webhooks/whatsapp', (req, res) => {
-    if (req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN) {
-      return res.send(req.query['hub.challenge']);
-    }
-    res.sendStatus(403);
-  });
-
-  // --- 2. AUTH FOR API ---
-  const auth = (req: Request, res: Response, next: NextFunction) => {
-    const password = process.env.DASHBOARD_PASSWORD;
-    const provided = req.query.pw || req.headers['x-dashboard-pw'];
-    if (provided === password && password) return next();
-    res.status(401).json({ error: 'Unauthorized' });
-  };
-
-  app.get('/api/stats', auth, async (req, res) => res.json(await dashboardService.getStats()));
-
-  // BIND TO PORT IMMEDIATELY
-  const server = app.listen(port, () => {
-    console.log('HTTP Server listening on port ' + port);
-  });
-
-  // --- 3. ADAPTERS (ASYNC) ---
-  const adapters: any[] = [];
-  
-  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {
-    try {
-      const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
-      adapters.push(tg);
-      relayService.registerAdapter(Platform.TELEGRAM, tg);
-    } catch (e) { console.error('Telegram init failed'); }
-  }
+  console.log('--- MOXIE BOOTSTRAP STARTING (v1.0.9) ---');
 
   try {
-    const wa = new OfficialWhatsAppAdapter();
-    adapters.push(wa);
-    relayService.registerAdapter(Platform.WHATSAPP, wa);
-  } catch (e) { console.error('WhatsApp init failed'); }
+    const userService = new UserService();
+    const matchmakingService = new MatchmakingService(userService);
+    const relayService = new RelayService(userService, matchmakingService);
+    const commandHandler = new CommandHandler(userService, matchmakingService, relayService);
+    const dashboardService = new DashboardService();
+    const rateLimiter = new RateLimiter();
 
-  app.post('/webhooks/whatsapp', async (req, res) => {
-    try {
-      const wa = adapters.find(a => a.getPlatform && a.getPlatform() === Platform.WHATSAPP);
-      if (wa) await wa.handleWebhookPayload(req.body);
-      res.sendStatus(200);
-    } catch (err) { res.sendStatus(500); }
-  });
+    console.log('Services initialized.');
 
-  // Start adapters in background to not block port binding
-  (async () => {
-    for (const adapter of adapters) {
-      try {
-        adapter.onMessage(async (msg: any) => {
-          if (!rateLimiter.isAllowed(msg.externalId)) return;
-          if (await commandHandler.handle(msg, adapter)) return;
-          await relayService.relayMessage(msg, adapter.getPlatform());
-        });
-        if (adapter.onTypingState) adapter.onTypingState(async (id: string) => relayService.relayTypingState(id, adapter.getPlatform()));
-        if (adapter.onButtonSelected) adapter.onButtonSelected(async (id: string, btn: string) => commandHandler.handleButton(id, btn, adapter));
-        
-        await adapter.initialize();
-        console.log(adapter.getPlatform() + ' initialized');
-      } catch (error) {
-        console.error('Adapter startup failed');
+    const app = express();
+    const port = Number(process.env.PORT) || 3000;
+    app.use(bodyParser.json({ limit: '50mb' }));
+
+    // Public health check
+    app.get('/health', (req, res) => res.status(200).send('OK'));
+    app.get('/version', (req, res) => res.send('Moxie v1.0.9 Online'));
+    app.get('/', (req, res) => {
+      res.send(DASHBOARD_HTML(String(req.query.pw || '')));
+    });
+    
+    app.get('/privacy', (req, res) => {
+      res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
+    });
+
+    // API stats
+    app.get('/api/stats', async (req, res) => {
+      const password = process.env.DASHBOARD_PASSWORD;
+      const provided = req.query.pw || req.headers['x-dashboard-pw'];
+      if (provided === password && password) {
+        return res.json(await dashboardService.getStats());
       }
+      res.status(401).json({ error: 'Unauthorized' });
+    });
+
+    console.log('Routes registered.');
+
+    // BIND TO PORT IMMEDIATELY (using 0.0.0.0 for external access)
+    app.listen(port, '0.0.0.0', () => {
+      console.log('HTTP Server is listening on 0.0.0.0:' + port);
+    });
+
+    // Handle adapters
+    const adapters: any[] = [];
+    
+    if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {
+      try {
+        console.log('Registering Telegram Adapter...');
+        const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
+        adapters.push(tg);
+        relayService.registerAdapter(Platform.TELEGRAM, tg);
+      } catch (e) { console.error('Telegram registration failed'); }
     }
-  })();
+
+    try {
+      console.log('Registering WhatsApp Adapter...');
+      const wa = new OfficialWhatsAppAdapter();
+      adapters.push(wa);
+      relayService.registerAdapter(Platform.WHATSAPP, wa);
+    } catch (e) { console.error('WhatsApp registration failed'); }
+
+    app.post('/webhooks/whatsapp', async (req, res) => {
+      try {
+        const wa = adapters.find(a => a.getPlatform && a.getPlatform() === Platform.WHATSAPP);
+        if (wa) await wa.handleWebhookPayload(req.body);
+        res.sendStatus(200);
+      } catch (err) { res.sendStatus(500); }
+    });
+
+    // Initialize adapters in background
+    (async () => {
+      for (const adapter of adapters) {
+        try {
+          console.log('Initializing ' + adapter.getPlatform() + '...');
+          adapter.onMessage(async (msg: any) => {
+            if (!rateLimiter.isAllowed(msg.externalId)) return;
+            if (await commandHandler.handle(msg, adapter)) return;
+            await relayService.relayMessage(msg, adapter.getPlatform());
+          });
+          if (adapter.onTypingState) adapter.onTypingState(async (id: string) => relayService.relayTypingState(id, adapter.getPlatform()));
+          if (adapter.onButtonSelected) adapter.onButtonSelected(async (id: string, btn: string) => commandHandler.handleButton(id, btn, adapter));
+          
+          await adapter.initialize();
+          console.log(adapter.getPlatform() + ' fully initialized.');
+        } catch (error) {
+          console.error('Adapter initialization crash');
+        }
+      }
+    })();
+
+  } catch (err) {
+    console.error('CRITICAL STARTUP ERROR:', err);
+    process.exit(1);
+  }
 }
 
-bootstrap().catch(err => { console.error('FATAL ERROR DURING BOOTSTRAP'); });
+bootstrap().catch(err => { console.error('BOOTSTRAP FATAL:', err); });
