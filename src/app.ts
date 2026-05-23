@@ -94,8 +94,8 @@ const DASHBOARD_HTML = (password: string) => {
     '  <div id="main-content" style="display:none">',
     '    <div class="container">',
     '      <header>',
-    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.1</span></h1>',
-    '        <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
+    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.2</span></h1>',
+    '        <button class="refresh-btn" id="refresh-btn">Refresh Data</button>',
     '      </header>',
     '      <div id="stats" class="stats-grid">',
     '        <div class="card"><h3>Total Users</h3><div class="value" id="totalUsers">...</div></div>',
@@ -116,20 +116,25 @@ const DASHBOARD_HTML = (password: string) => {
     '  </div>',
     '  <script>',
     '    (function() {',
-    '      var pw = "' + password + '";',
+    '      var urlPw = "' + password + '";',
+    '      var storageKey = "moxie_admin_pw";',
     '      async function loadStats(inputPw) {',
-    '        var checkPw = inputPw || pw;',
+    '        var checkPw = inputPw || urlPw || sessionStorage.getItem(storageKey);',
     '        if (!checkPw) {',
     '          document.getElementById("login-screen").style.display = "block";',
+    '          document.getElementById("main-content").style.display = "none";',
     '          return;',
     '        }',
     '        try {',
     '          var res = await fetch("/api/stats?pw=" + encodeURIComponent(checkPw));',
     '          if (!res.ok) {',
-    '            alert("Invalid Password");',
+    '            sessionStorage.removeItem(storageKey);',
     '            document.getElementById("login-screen").style.display = "block";',
+    '            document.getElementById("main-content").style.display = "none";',
+    '            if (inputPw) alert("Invalid Password");',
     '            return;',
     '          }',
+    '          sessionStorage.setItem(storageKey, checkPw);',
     '          var data = await res.json();',
     '          document.getElementById("login-screen").style.display = "none";',
     '          document.getElementById("main-content").style.display = "block";',
@@ -161,6 +166,9 @@ const DASHBOARD_HTML = (password: string) => {
     '      document.getElementById("login-btn").onclick = function() {',
     '        loadStats(document.getElementById("pw-input").value);',
     '      };',
+    '      document.getElementById("refresh-btn").onclick = function() {',
+    '        loadStats();',
+    '      };',
     '      loadStats();',
     '    })();',
     '  </script>',
@@ -170,7 +178,7 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.1) ---');
+  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.2) ---');
   
   // 1. Sync Database first
   await syncDatabase();
@@ -189,7 +197,7 @@ async function bootstrap() {
 
     // Public routes
     app.get('/health', (req, res) => res.status(200).send('OK'));
-    app.get('/version', (req, res) => res.send('Moxie v1.1.1 Online'));
+    app.get('/version', (req, res) => res.send('Moxie v1.1.2 Online'));
     app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
     
     app.get('/privacy', (req, res) => {
