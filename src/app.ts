@@ -37,40 +37,60 @@ const DASHBOARD_HTML = (password: string) => {
     '    table { width: 100%; border-collapse: collapse; }',
     '    th { text-align: left; font-size: 12px; color: #65676b; text-transform: uppercase; padding: 10px; border-bottom: 1px solid #ebedf0; }',
     '    td { padding: 10px; border-bottom: 1px solid #f0f2f5; font-size: 14px; }',
-    '    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }',
     '    .refresh-btn { background: #1877f2; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }',
+    '    #login-screen { display: none; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 400px; margin: 100px auto; text-align: center; }',
+    '    input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }',
     '  </style>',
     '</head>',
     '<body>',
-    '  <div class="container">',
-    '    <header>',
-    '      <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.0.9</span></h1>',
-    '      <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
-    '    </header>',
-    '    <div id="stats" class="stats-grid">',
-    '      <div class="card"><h3>Total Users</h3><div class="value" id="totalUsers">...</div></div>',
-    '      <div class="card"><h3>Active Matches</h3><div class="value" id="activeMatches">...</div></div>',
-    '      <div class="card"><h3>Searching</h3><div class="value" id="searchingUsers">...</div></div>',
-    '      <div class="card"><h3>Matched</h3><div class="value" id="matchedUsers">...</div></div>',
+    '  <div id="login-screen">',
+    '    <h1>🦁 Moxie Admin</h1>',
+    '    <p>Please enter the dashboard password:</p>',
+    '    <input type="password" id="pw-input" placeholder="Password">',
+    '    <button class="refresh-btn" id="login-btn">Login</button>',
+    '  </div>',
+    '  <div id="main-content" style="display:none">',
+    '    <div class="container">',
+    '      <header>',
+    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.0</span></h1>',
+    '        <button class="refresh-btn" onclick="location.reload()">Refresh Data</button>',
+    '      </header>',
+    '      <div id="stats" class="stats-grid">',
+    '        <div class="card"><h3>Total Users</h3><div class="value" id="totalUsers">...</div></div>',
+    '        <div class="card"><h3>Active Matches</h3><div class="value" id="activeMatches">...</div></div>',
+    '        <div class="card"><h3>Searching</h3><div class="value" id="searchingUsers">...</div></div>',
+    '        <div class="card"><h3>Matched</h3><div class="value" id="matchedUsers">...</div></div>',
+    '      </div>',
+    '      <div class="section">',
+    '        <h2>Recent Matches</h2>',
+    '        <table>',
+    '          <thead><tr><th>Started</th><th>User 1</th><th>User 2</th><th>Interests</th></tr></thead>',
+    '          <tbody id="recentMatches"></tbody>',
+    '        </table>',
+    '      </div>',
+    '      <div class="section"><h2>Recent Feedback</h2><div id="feedbacks"></div></div>',
+    '      <div class="section"><h2>Recent Reports</h2><div id="reports"></div></div>',
     '    </div>',
-    '    <div class="section">',
-    '      <h2>Recent Matches</h2>',
-    '      <table>',
-    '        <thead><tr><th>Started</th><th>User 1</th><th>User 2</th><th>Interests</th></tr></thead>',
-    '        <tbody id="recentMatches"></tbody>',
-    '      </table>',
-    '    </div>',
-    '    <div class="section"><h2>Recent Feedback</h2><div id="feedbacks"></div></div>',
-    '    <div class="section"><h2>Recent Reports</h2><div id="reports"></div></div>',
     '  </div>',
     '  <script>',
     '    (function() {',
     '      var pw = "' + password + '";',
-    '      async function loadStats() {',
+    '      async function loadStats(inputPw) {',
+    '        var checkPw = inputPw || pw;',
+    '        if (!checkPw) {',
+    '          document.getElementById("login-screen").style.display = "block";',
+    '          return;',
+    '        }',
     '        try {',
-    '          var res = await fetch("/api/stats?pw=" + pw);',
-    '          if (!res.ok) { document.body.innerHTML = "<h1>Unauthorized</h1>"; return; }',
+    '          var res = await fetch("/api/stats?pw=" + encodeURIComponent(checkPw));',
+    '          if (!res.ok) {',
+    '            alert("Invalid Password");',
+    '            document.getElementById("login-screen").style.display = "block";',
+    '            return;',
+    '          }',
     '          var data = await res.json();',
+    '          document.getElementById("login-screen").style.display = "none";',
+    '          document.getElementById("main-content").style.display = "block";',
     '          document.getElementById("totalUsers").textContent = data.totalUsers;',
     '          document.getElementById("activeMatches").textContent = data.activeMatches;',
     '          document.getElementById("searchingUsers").textContent = data.searchingUsers;',
@@ -96,6 +116,9 @@ const DASHBOARD_HTML = (password: string) => {
     '          document.getElementById("reports").innerHTML = reportHtml || "<p>No reports</p>";',
     '        } catch (err) { console.error("Failed to load stats:", err); }',
     '      }',
+    '      document.getElementById("login-btn").onclick = function() {',
+    '        loadStats(document.getElementById("pw-input").value);',
+    '      };',
     '      loadStats();',
     '    })();',
     '  </script>',
@@ -105,7 +128,7 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('--- MOXIE BOOTSTRAP STARTING (v1.0.9) ---');
+  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.0) ---');
 
   try {
     const userService = new UserService();
@@ -115,46 +138,46 @@ async function bootstrap() {
     const dashboardService = new DashboardService();
     const rateLimiter = new RateLimiter();
 
-    console.log('Services initialized.');
-
     const app = express();
     const port = Number(process.env.PORT) || 3000;
     app.use(bodyParser.json({ limit: '50mb' }));
 
-    // Public health check
+    // Public routes
     app.get('/health', (req, res) => res.status(200).send('OK'));
-    app.get('/version', (req, res) => res.send('Moxie v1.0.9 Online'));
-    app.get('/', (req, res) => {
-      res.send(DASHBOARD_HTML(String(req.query.pw || '')));
-    });
+    app.get('/version', (req, res) => res.send('Moxie v1.1.0 Online'));
+    app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
     
     app.get('/privacy', (req, res) => {
       res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
     });
 
-    // API stats
+    // API stats with robust auth
     app.get('/api/stats', async (req, res) => {
-      const password = process.env.DASHBOARD_PASSWORD;
-      const provided = req.query.pw || req.headers['x-dashboard-pw'];
-      if (provided === password && password) {
+      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
+      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
+      
+      if (!password) {
+        console.error('ALERT: DASHBOARD_PASSWORD is not set in environment variables!');
+        return res.status(500).json({ error: 'Server configuration error' });
+      }
+
+      if (provided === password) {
         return res.json(await dashboardService.getStats());
       }
+      
+      console.warn('Dashboard access denied: Incorrect password provided.');
       res.status(401).json({ error: 'Unauthorized' });
     });
 
-    console.log('Routes registered.');
-
-    // BIND TO PORT IMMEDIATELY (using 0.0.0.0 for external access)
+    // BIND TO PORT IMMEDIATELY
     app.listen(port, '0.0.0.0', () => {
       console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
 
     // Handle adapters
     const adapters: any[] = [];
-    
     if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {
       try {
-        console.log('Registering Telegram Adapter...');
         const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
         adapters.push(tg);
         relayService.registerAdapter(Platform.TELEGRAM, tg);
@@ -162,7 +185,6 @@ async function bootstrap() {
     }
 
     try {
-      console.log('Registering WhatsApp Adapter...');
       const wa = new OfficialWhatsAppAdapter();
       adapters.push(wa);
       relayService.registerAdapter(Platform.WHATSAPP, wa);
@@ -180,7 +202,6 @@ async function bootstrap() {
     (async () => {
       for (const adapter of adapters) {
         try {
-          console.log('Initializing ' + adapter.getPlatform() + '...');
           adapter.onMessage(async (msg: any) => {
             if (!rateLimiter.isAllowed(msg.externalId)) return;
             if (await commandHandler.handle(msg, adapter)) return;
@@ -188,7 +209,6 @@ async function bootstrap() {
           });
           if (adapter.onTypingState) adapter.onTypingState(async (id: string) => relayService.relayTypingState(id, adapter.getPlatform()));
           if (adapter.onButtonSelected) adapter.onButtonSelected(async (id: string, btn: string) => commandHandler.handleButton(id, btn, adapter));
-          
           await adapter.initialize();
           console.log(adapter.getPlatform() + ' fully initialized.');
         } catch (error) {
