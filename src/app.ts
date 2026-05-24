@@ -46,6 +46,7 @@ async function syncDatabase() {
     await query(`
       ALTER TABLE users 
       ADD COLUMN IF NOT EXISTS pref_gender TEXT,
+      ADD COLUMN IF NOT EXISTS active_contact_id UUID,
       ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 100,
       ADD COLUMN IF NOT EXISTS accept_media BOOLEAN DEFAULT TRUE,

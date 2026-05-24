@@ -23,7 +23,13 @@ CREATE TABLE users (
     normalized_interests TEXT[] DEFAULT '{}',
     status user_status_type DEFAULT 'idle',
     current_match_id UUID,
+    active_contact_id UUID,
     is_banned BOOLEAN DEFAULT FALSE,
+    trust_score INTEGER DEFAULT 100,
+    accept_media BOOLEAN DEFAULT TRUE,
+    is_ready BOOLEAN DEFAULT FALSE,
+    last_match_attempt_at TIMESTAMP WITH TIME ZONE,
+    last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(external_id, platform)
 );
@@ -44,6 +50,7 @@ CREATE TABLE matches (
     user_2_id UUID NOT NULL REFERENCES users(id),
     shared_interests TEXT[] DEFAULT '{}',
     started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP WITH TIME ZONE,
     CHECK (user_1_id < user_2_id) -- Prevent duplicate match entries for same pair
 );
