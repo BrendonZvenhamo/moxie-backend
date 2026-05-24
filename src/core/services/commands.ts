@@ -449,12 +449,6 @@ export class CommandHandler {
     const match = await this.matchmaker.findMatch(userId);
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
-    } else {
-      // Issue #6: Re-engagement - Notify idle users who might want to match
-      const potentials = await this.matchmaker.findPotentialPartners(userId);
-      for (const p of potentials) {
-        await this.relayService.notifyPotentialMatch(p.id, p.interests);
-      }
     }
   }
 

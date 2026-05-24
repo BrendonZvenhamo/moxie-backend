@@ -179,27 +179,6 @@ export class RelayService {
   }
 
   /**
-   * Notify an idle user that someone with their interests is searching.
-   */
-  async notifyPotentialMatch(targetUserId: string, interests: string[]) {
-    const user = await this.userService.getUserById(targetUserId);
-    if (!user) return;
-    
-    const adapter = this.adapters.get(user.platform);
-    if (!adapter) return;
-
-    await adapter.sendMessage(user.externalId, {
-      type: 'buttons',
-      title: '👋 SOMEONE IS WAITING!',
-      body: `Someone who likes ${interests.join(', ')} just joined the queue! Want to jump in and chat?`,
-      buttons: [
-        { id: 'match_now', text: '🔎 Start Matching' },
-        { id: 'view_help', text: '🔇 Ignore' }
-      ]
-    });
-  }
-
-  /**
    * Notify a user about a pending friend request.
    */
   async notifyFriendRequest(fromUserId: string, toUserId: string) {
