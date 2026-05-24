@@ -13,6 +13,7 @@
 export const INTEREST_CLUSTERS: Record<string, string> = {
 
   // --- SPORTS & FITNESS ----------------------------------------------------
+  'sports':            'sports_cluster',
   'football':          'sports_cluster',
   'soccer':            'sports_cluster',
   'basketball':        'sports_cluster',
@@ -114,6 +115,7 @@ export const INTEREST_CLUSTERS: Record<string, string> = {
   'dnd':               'gaming_cluster',
 
   // --- TECH & DEVELOPMENT --------------------------------------------------
+  'tech':              'tech_cluster',
   'coding':            'tech_cluster',
   'programming':       'tech_cluster',
   'developer':         'tech_cluster',

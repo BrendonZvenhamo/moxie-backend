@@ -173,7 +173,32 @@ export class CommandHandler {
         const purpose = buttonId.split('_')[1];
         await this.userService.updatePurpose(user.id, purpose);
         await this.userService.updateOnboardingStep(user.id, 'interests');
-        await adapter.sendMessage(externalId, { type: 'text', content: '✅ Great! Now, tell me your interests. Separate them with commas.\n\nExample: music, gaming, travel' });
+        await this.showInterestSelection(externalId, adapter);
+        break;
+
+      case 'interest_gaming':
+      case 'interest_music':
+      case 'interest_sports':
+      case 'interest_tech':
+      case 'interest_movies':
+      case 'interest_food':
+      case 'interest_travel':
+      case 'interest_art':
+      case 'interest_reading':
+      case 'interest_finance':
+        const interest = buttonId.split('_')[1];
+        await this.userService.updateInterests(user.id, [interest]);
+        await this.userService.updateOnboardingStep(user.id, 'gender');
+        await adapter.sendMessage(externalId, {
+          type: 'buttons',
+          title: '⚧ STEP 3: GENDER',
+          body: 'Almost done! Your gender?',
+          buttons: [
+            { id: 'gender_male', text: '👨 Male' },
+            { id: 'gender_female', text: '👩 Female' },
+            { id: 'gender_other', text: '🌈 Other' }
+          ]
+        });
         break;
 
       case 'gender_male':
@@ -297,7 +322,7 @@ export class CommandHandler {
     if (step === 'interests') {
       const interests = text.split(',').map(i => i.trim().toLowerCase()).filter(i => i.length > 0);
       if (interests.length === 0) {
-        await adapter.sendMessage(externalId, { type: 'text', content: 'Please provide interests!' });
+        await this.showInterestSelection(externalId, adapter);
       } else {
         await this.userService.updateInterests(user.id, interests);
         await this.userService.updateOnboardingStep(user.id, 'gender');
@@ -344,6 +369,26 @@ export class CommandHandler {
     }
 
     return false;
+  }
+
+  private async showInterestSelection(externalId: string, adapter: IPlatformAdapter) {
+    await adapter.sendMessage(externalId, {
+      type: 'buttons',
+      title: '🎯 STEP 2: INTERESTS',
+      body: 'What are you most interested in? Select a category to find people with similar vibes.',
+      buttons: [
+        { id: 'interest_gaming', text: '🎮 Gaming' },
+        { id: 'interest_music', text: '🎵 Music' },
+        { id: 'interest_sports', text: '⚽ Sports' },
+        { id: 'interest_tech', text: '💻 Tech' },
+        { id: 'interest_movies', text: '🎬 Movies' },
+        { id: 'interest_food', text: '🍕 Food' },
+        { id: 'interest_travel', text: '✈️ Travel' },
+        { id: 'interest_art', text: '🎨 Art' },
+        { id: 'interest_reading', text: '📚 Reading' },
+        { id: 'interest_finance', text: '💰 Finance' }
+      ]
+    });
   }
 
   private async initiateMatch(userId: string, externalId: string, adapter: IPlatformAdapter) {
