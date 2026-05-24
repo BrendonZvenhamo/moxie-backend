@@ -42,7 +42,9 @@ export class MatchmakingService {
         )
         AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
         AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
-        ORDER BY overlap_count DESC
+        -- Issue #4: Prioritize users with similar quality/behavior scores
+        -- Similarity is calculated by minimizing the absolute difference in trust_score
+        ORDER BY overlap_count DESC, ABS(trust_score - (SELECT trust_score FROM users WHERE id = $1)) ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED;
       `;
@@ -80,10 +82,10 @@ export class MatchmakingService {
       const matchResult = await client.query(createMatchSql, [u1, u2, sharedInterests]);
       const match = matchResult.rows[0];
 
-      // Update both users to 'matched' status
+      // Issue #5: Update status and reset ready check
       const updateStatusSql = `
         UPDATE users 
-        SET status = 'matched', current_match_id = $1 
+        SET status = 'matched', current_match_id = $1, is_ready = FALSE
         WHERE id = $2
       `;
       await client.query(updateStatusSql, [match.id, userId]);
@@ -96,6 +98,45 @@ export class MatchmakingService {
         interests: match.shared_interests,
       };
     });
+  }
+
+  /**
+   * Find idle users with overlapping interests to notify them someone is waiting.
+   */
+  async findPotentialPartners(userId: string): Promise<{id: string, interests: string[]}[]> {
+    const user = await this.userService.getUserById(userId);
+    if (!user || user.normalizedInterests.length === 0) return [];
+
+    const sql = `
+      SELECT id, normalized_interests
+      FROM users 
+      WHERE status = 'idle' 
+      AND id != $1 
+      AND is_banned = FALSE
+      AND normalized_interests && $2
+      AND (purpose = 'both' OR $3 = 'both' OR purpose = $3)
+      AND ($4 = 'both' OR $4 = gender)
+      AND (pref_gender = 'both' OR pref_gender = $5)
+      AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
+      AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
+      AND last_activity_at > (CURRENT_TIMESTAMP - INTERVAL '24 hours')
+      LIMIT 3
+    `;
+    const result = await query(sql, [
+      userId, 
+      user.normalizedInterests, 
+      user.purpose || 'both',
+      user.prefGender || 'both',
+      user.gender || 'other'
+    ]);
+
+    return result.rows.map(r => ({
+      id: r.id,
+      interests: user.interests.filter(i => {
+        const res = normalizeInterest(i);
+        return res.cluster && r.normalized_interests.includes(res.cluster);
+      })
+    }));
   }
 
   /**

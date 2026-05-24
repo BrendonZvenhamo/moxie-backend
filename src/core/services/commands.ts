@@ -130,11 +130,12 @@ export class CommandHandler {
   async showMainMenu(externalId: string, adapter: IPlatformAdapter) {
     const user = await this.userService.getOrCreateUser(externalId, adapter.getPlatform());
     const mood = getMoodDecoration(user.purpose);
+    const trending = await this.userService.getTrendingInterests();
 
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: mood.header,
-      body: `${mood.emoji} Status: ${user.status.toUpperCase()}\n${mood.accent} Interests: ${user.interests.join(', ') || 'None'}\n\nWhat would you like to do?`,
+      body: `${mood.emoji} Status: ${user.status.toUpperCase()}\n${mood.accent} Interests: ${user.interests.join(', ') || 'None'}\n\n🔥 *Trending:* ${trending.join(', ')}\n\nWhat would you like to do?`,
       buttons: [
         { id: 'match_now', text: '🔎 Find Match' },
         { id: 'view_profile', text: '👤 View Profile' },
@@ -398,15 +399,24 @@ export class CommandHandler {
       await adapter.sendMessage(externalId, { type: 'text', content: 'Already in a match! Use /stop.' });
       return;
     }
+
+    const waitingCount = await this.userService.getSearchingCount();
+    const queueMsg = waitingCount > 0 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
+
     await adapter.sendMessage(externalId, { 
       type: 'text', 
-      content: `🔎 Searching for: ${user.interests.join(', ')}...\n\n💡 Use these commands (include the slash):\n🤝 /add - Save friend\n🛡️ /block - Hide user` 
+      content: `🔎 Searching for: ${user.interests.join(', ')}...\n\n👥 ${queueMsg}\n\n💡 Use /stop to cancel.` 
     });
+
     const match = await this.matchmaker.findMatch(userId);
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Searching... I will notify you! ⏳\n\n*(Type stop to cancel)*' });
+      // Issue #6: Re-engagement - Notify idle users who might want to match
+      const potentials = await this.matchmaker.findPotentialPartners(userId);
+      for (const p of potentials) {
+        await this.relayService.notifyPotentialMatch(p.id, p.interests);
+      }
     }
   }
 
@@ -418,9 +428,34 @@ export class CommandHandler {
       await this.showMainMenu(externalId, adapter);
       if (partnerId) await this.relayService.notifyMatchEnded(partnerId, 'Stranger left');
     } else {
-      await this.userService.updateStatus(userId, UserStatus.IDLE);
+      await this.userService.updateStatus(userId, UserStatus.IDLE, null, null);
       await adapter.sendMessage(externalId, { type: 'text', content: 'Stopped.' });
       await this.showMainMenu(externalId, adapter);
+    }
+  }
+
+  private async handleReadyConfirm(userId: string, adapter: IPlatformAdapter) {
+    const user = await this.userService.getUserById(userId);
+    if (!user || !user.currentMatchId) return;
+
+    await this.userService.updateReadyStatus(userId, true);
+    
+    const match = await this.matchmaker.getActiveMatch(userId);
+    if (!match) return;
+
+    const partnerId = match.userIds.find(id => id !== userId);
+    const partner = partnerId ? await this.userService.getUserById(partnerId) : null;
+
+    if (partner) {
+      if (partner.isReady) {
+        const startMsg = "🚀 *CONNECTED!* You can now send messages. Have fun!\n\n🤝 /add | 🛡️ /block | 🚪 /stop";
+        await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
+        
+        const partnerAdapter = this.relayService['adapters'].get(partner.platform);
+        if (partnerAdapter) await partnerAdapter.sendMessage(partner.externalId, { type: 'text', content: startMsg });
+      } else {
+        await adapter.sendMessage(user.externalId, { type: 'text', content: '✅ Status: Ready. Waiting for the stranger...' });
+      }
     }
   }
 
@@ -507,8 +542,27 @@ export class CommandHandler {
     if (contacts.length === 0) {
       await adapter.sendMessage(externalId, { type: 'text', content: "No contacts yet." });
     } else {
-      const list = contacts.map(c => `- ${c.username} (${c.platform})`).join('\n');
-      await adapter.sendMessage(externalId, { type: 'text', content: `Your friends:\n${list}` });
+      await adapter.sendMessage(externalId, {
+        type: 'buttons',
+        title: '👥 YOUR CONTACTS',
+        body: 'Select a friend to start a private conversation.',
+        buttons: contacts.slice(0, 10).map(c => ({
+          id: `chat_with_${c.id}`,
+          text: `💬 Chat: ${c.username}`
+        }))
+      });
+    }
+  }
+
+  private async startPrivateChat(userId: string, friendId: string, adapter: IPlatformAdapter) {
+    const friend = await this.userService.getUserById(friendId);
+    if (friend) {
+      await this.userService.updateStatus(userId, UserStatus.IDLE, null, friendId);
+      await adapter.sendMessage(adapter.getPlatform() === friend.platform ? friend.externalId : '', { 
+        type: 'text', 
+        content: `🔔 *SYSTEM:* Your friend is messaging you! Type /contacts to chat back.` 
+      });
+      await adapter.sendMessage(adapter.getPlatform() === friend.platform ? '' : '', { type: 'text', content: `Switched to chat with ${friend.username}. Send a message!` });
     }
   }
 

@@ -46,7 +46,18 @@ async function syncDatabase() {
     await query(`
       ALTER TABLE users 
       ADD COLUMN IF NOT EXISTS pref_gender TEXT,
-      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
+      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 100,
+      ADD COLUMN IF NOT EXISTS accept_media BOOLEAN DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS is_ready BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS last_match_attempt_at TIMESTAMP WITH TIME ZONE,
+      ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    // 4. Ensure last_activity_at exists in matches
+    await query(`
+      ALTER TABLE matches
+      ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     `);
 
     console.log('✅ Database sync complete.');

@@ -26,22 +26,41 @@ export class RelayService {
   async relayMessage(msg: IncomingMessage, sourcePlatform: Platform): Promise<boolean> {
     const user = await this.userService.getOrCreateUser(msg.externalId, sourcePlatform);
     
-    if (!user.currentMatchId) return false;
+    let partnerId: string | undefined;
+    let contextId: string | null = null;
 
-    const match = await this.matchmaker.getActiveMatch(user.id);
-    if (!match) return false;
-
-    // Buffering for reports (keep last 5)
-    if (msg.text) {
-      const buffer = this.chatBuffers.get(match.id) || [];
-      buffer.push({ sender: user.username || user.externalId, text: msg.text });
-      if (buffer.length > 5) buffer.shift();
-      this.chatBuffers.set(match.id, buffer);
+    if (user.currentMatchId) {
+      const match = await this.matchmaker.getActiveMatch(user.id);
+      if (match) {
+        partnerId = match.userIds.find(id => id !== user.id);
+        contextId = match.id;
+      }
+    } else if (user.activeContactId) {
+      partnerId = user.activeContactId;
+      contextId = `private_${user.id}_${partnerId}`;
     }
 
-    // Find the partner's ID
-    const partnerId = match.userIds.find(id => id !== user.id);
     if (!partnerId) return false;
+
+    // Issue #5: Block relaying if in a stranger match but not both ready
+    if (user.currentMatchId) {
+      const partner = await this.userService.getUserById(partnerId);
+      if (partner && (!user.isReady || !partner.isReady)) {
+        const sourceAdapter = this.adapters.get(sourcePlatform);
+        if (sourceAdapter) {
+          await sourceAdapter.sendMessage(user.externalId, { type: 'text', content: '⏳ Waiting for both users to click "I\'m Ready" before opening the chat.' });
+        }
+        return false;
+      }
+    }
+
+    // Buffering for reports (keep last 5)
+    if (msg.text && contextId) {
+      const buffer = this.chatBuffers.get(contextId) || [];
+      buffer.push({ sender: user.username || user.externalId, text: msg.text });
+      if (buffer.length > 5) buffer.shift();
+      this.chatBuffers.set(contextId, buffer);
+    }
 
     const partner = await this.userService.getUserById(partnerId);
     if (!partner) return false;
@@ -126,26 +145,56 @@ export class RelayService {
     if (u1 && u2) {
       const interestList = interests.join(', ');
       
+      const icebreakers = [
+        "What's the most recent thing you did related to these interests?",
+        "If you had to pick one of these for the rest of your life, which one?",
+        "Who is your favorite person/creator in this space?",
+        "Got any unpopular opinions about these?"
+      ];
+      const tip = icebreakers[Math.floor(Math.random() * icebreakers.length)];
+
       const a1 = this.adapters.get(u1.platform);
       const a2 = this.adapters.get(u2.platform);
 
-      const m1 = getMoodDecoration(u1.purpose);
-      const m2 = getMoodDecoration(u2.purpose);
+      const matchMsg = {
+        type: 'buttons',
+        title: '🎉 MATCH FOUND!',
+        body: `You both like: ${interestList}\n\n💡 *Icebreaker:* ${tip}\n\nClick below within 60 seconds to open the chat!`,
+        buttons: [
+          { id: 'ready_confirm', text: '✅ I\'m Ready!' },
+          { id: 'stop', text: '🚪 Skip' }
+        ]
+      };
 
       if (a1) {
-        await a1.sendMessage(u1.externalId, {
-          type: 'text',
-          content: `🎉 *MATCH FOUND!*\n\n${m1.header}\nYou both like: ${interestList}\n\nSay hi! 👋\n\n🤝 /add | 🛡️ /block | 🚪 /stop`
-        });
+        await a1.sendMessage(u1.externalId, matchMsg as any);
       }
 
       if (a2) {
-        await a2.sendMessage(u2.externalId, {
-          type: 'text',
-          content: `🎉 *MATCH FOUND!*\n\n${m2.header}\nYou both like: ${interestList}\n\nSay hi! 👋\n\n🤝 /add | 🛡️ /block | 🚪 /stop`
-        });
+        await a2.sendMessage(u2.externalId, matchMsg as any);
       }
     }
+  }
+
+  /**
+   * Notify an idle user that someone with their interests is searching.
+   */
+  async notifyPotentialMatch(targetUserId: string, interests: string[]) {
+    const user = await this.userService.getUserById(targetUserId);
+    if (!user) return;
+    
+    const adapter = this.adapters.get(user.platform);
+    if (!adapter) return;
+
+    await adapter.sendMessage(user.externalId, {
+      type: 'buttons',
+      title: '👋 SOMEONE IS WAITING!',
+      body: `Someone who likes ${interests.join(', ')} just joined the queue! Want to jump in and chat?`,
+      buttons: [
+        { id: 'match_now', text: '🔎 Start Matching' },
+        { id: 'view_help', text: '🔇 Ignore' }
+      ]
+    });
   }
 
   /**

@@ -24,6 +24,10 @@ export interface User {
   status: UserStatus;
   currentMatchId?: string;
   isBanned: boolean;
+  trustScore: number;
+  acceptMedia: boolean;
+  lastMatchAttemptAt?: Date;
+  lastActivityAt: Date;
   blockedUserIds: string[];
   contactIds: string[]; // Confirmed friends
   pendingContactIds: string[]; // Sent requests waiting for acceptance
@@ -35,5 +39,6 @@ export interface Match {
   userIds: [string, string];
   startedAt: Date;
   endedAt?: Date;
+  lastActivityAt: Date;
   interests: string[]; // Shared interests that triggered the match
 }

@@ -65,13 +65,72 @@ export class UserService {
   /**
    * Update a user's status (e.g., idle -> searching).
    */
-  async updateStatus(userId: string, status: UserStatus, currentMatchId: string | null = null): Promise<void> {
+  async updateStatus(userId: string, status: UserStatus, currentMatchId: string | null = null, activeContactId: string | null = null): Promise<void> {
     const sql = `
       UPDATE users 
-      SET status = $1, current_match_id = $2 
-      WHERE id = $3
+      SET status = $1, current_match_id = $2, active_contact_id = $3, is_ready = FALSE, last_activity_at = CURRENT_TIMESTAMP
+      WHERE id = $4
     `;
-    await query(sql, [status, currentMatchId, userId]);
+    await query(sql, [status, currentMatchId, activeContactId, userId]);
+  }
+
+  /**
+   * Update a user's readiness for a match.
+   */
+  async updateReadyStatus(userId: string, isReady: boolean): Promise<void> {
+    const sql = `UPDATE users SET is_ready = $1 WHERE id = $2`;
+    await query(sql, [isReady, userId]);
+  }
+
+  /**
+   * Get the count of users currently searching for a match.
+   */
+  async getSearchingCount(): Promise<number> {
+    const result = await query("SELECT count(*) FROM users WHERE status = 'searching'");
+    return parseInt(result.rows[0].count);
+  }
+
+  /**
+   * Get the most popular interests across the platform.
+   */
+  async getTrendingInterests(): Promise<string[]> {
+    const sql = `
+      SELECT interest, count(*) 
+      FROM users, unnest(normalized_interests) as interest 
+      GROUP BY interest 
+      ORDER BY count DESC 
+      LIMIT 5
+    `;
+    const result = await query(sql);
+    return result.rows.map(r => r.interest.replace('_cluster', ''));
+  }
+
+  /**
+   * Update last activity for a user.
+   */
+  async updateLastActivity(userId: string): Promise<void> {
+    await query('UPDATE users SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1', [userId]);
+  }
+
+  /**
+   * Update last match attempt for a user.
+   */
+  async updateLastMatchAttempt(userId: string): Promise<void> {
+    await query('UPDATE users SET last_match_attempt_at = CURRENT_TIMESTAMP WHERE id = $1', [userId]);
+  }
+
+  /**
+   * Toggle media acceptance.
+   */
+  async toggleMedia(userId: string, accept: boolean): Promise<void> {
+    await query('UPDATE users SET accept_media = $1 WHERE id = $2', [accept, userId]);
+  }
+
+  /**
+   * Update trust score.
+   */
+  async updateTrustScore(userId: string, delta: number): Promise<void> {
+    await query('UPDATE users SET trust_score = trust_score + $1 WHERE id = $2', [delta, userId]);
   }
 
   /**
@@ -152,6 +211,10 @@ export class UserService {
       ON CONFLICT (user_id, contact_id) DO UPDATE SET status = 'accepted'
     `;
     await query(ensureSql, [userId, contactId]);
+
+    // Issue #4: Reward both users for a successful connection
+    await this.updateTrustScore(userId, 10);
+    await this.updateTrustScore(contactId, 10);
   }
 
   /**
@@ -256,6 +319,8 @@ export class UserService {
       normalizedInterests: row.normalized_interests || [],
       status: row.status as UserStatus,
       currentMatchId: row.current_match_id,
+      activeContactId: row.active_contact_id,
+      isReady: row.is_ready || false,
       isBanned: row.is_banned || false,
       blockedUserIds: [], // These could be loaded via a separate join if needed
       contactIds: [],
