@@ -631,20 +631,3 @@ export class CommandHandler {
     });
   }
 }
-        '🚩 *Report:* /report - Report abuse to the admin.\n' +
-        '🤝 *Add:* /add - Send a friend request to stay in touch.\n' +
-        '👤 *Profile:* /profile - View or edit your interests.\n' +
-        '💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n' +
-        'Need more help? Just message us!'
-      content: "📖 *Moxie Guide*\n\n" +
-        "🔎 *Match:* /match - Find a stranger who shares your interests.\n" +
-        "🚪 *Stop:* /stop - End your current chat safely.\n" +
-        "🛡️ *Block:* /block - Stop someone from matching with you again.\n" +
-        "🚩 *Report:* /report - Report abuse to the admin.\n" +
-        "🤝 *Add:* /add - Send a friend request to stay in touch.\n" +
-        "👤 *Profile:* /profile - View or edit your interests.\n" +
-        "💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n" +
-        "Need more help? Just message us!"
-    });
-  }
-}
