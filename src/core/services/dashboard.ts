@@ -109,9 +109,22 @@ export class DashboardService {
 
   async resetStats(): Promise<void> {
     try {
-      await query("TRUNCATE TABLE users CASCADE");
-      await query("TRUNCATE TABLE feedbacks");
-      await query("TRUNCATE TABLE reports");
-    } catch (e) {}
+      // Reset user statuses and onboarding for updates
+      await query(`
+        UPDATE users 
+        SET status = 'idle', 
+            onboarding_step = 'start', 
+            current_match_id = NULL, 
+            active_contact_id = NULL, 
+            interests = '{}', 
+            normalized_interests = '{}',
+            is_ready = FALSE
+      `);
+      // End all active matches without deleting history
+      await query("UPDATE matches SET ended_at = CURRENT_TIMESTAMP WHERE ended_at IS NULL");
+    } catch (e) {
+      console.error('Dashboard reset error:', e);
+      throw e;
+    }
   }
 }

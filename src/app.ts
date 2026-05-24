@@ -107,7 +107,11 @@ const DASHBOARD_HTML = (password: string) => {
     '    <div class="container">',
     '      <header>',
     '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.2</span></h1>',
+    '        <div style="display:flex; gap:10px;">',
     '        <button class="refresh-btn" id="refresh-btn">Refresh Data</button>',
+    '        <button class="refresh-btn" id="broadcast-btn" style="background: #007bff;">Broadcast Message</button>',
+    '        <button class="refresh-btn" id="reset-btn" style="background: #d93025;">Reset for Update</button>',
+    '        </div>',
     '      </header>',
     '      <div id="stats" class="stats-grid">',
     '        <div class="card"><h3>Total Users</h3><div class="value" id="totalUsers">...</div></div>',
@@ -181,6 +185,28 @@ const DASHBOARD_HTML = (password: string) => {
     '      document.getElementById("refresh-btn").onclick = function() {',
     '        loadStats();',
     '      };',
+    '      document.getElementById("broadcast-btn").onclick = async function() {',
+    '        var message = prompt("Enter message to broadcast to all users:");',
+    '        if (!message) return;',
+    '        var checkPw = sessionStorage.getItem(storageKey);',
+    '        try {',
+    '          var res = await fetch("/api/broadcast?pw=" + encodeURIComponent(checkPw), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: message }) });',
+    '          if (res.ok) {',
+    '            alert("Broadcast successful!");',
+    '          } else { alert("Broadcast failed: Status " + res.status); }',
+    '        } catch (err) { alert("Error: " + err.message); }',
+    '      };',
+    '      document.getElementById("reset-btn").onclick = async function() {',
+    '        if (!confirm("⚠️ RESET SYSTEM FOR UPDATE?\\n\\nThis will:\\n1. Reset ALL user profiles (onboarding start)\\n2. Clear ALL active matches\\n3. Set all users to idle\\n\\nFeedback and Match History will NOT be deleted.")) return;',
+    '        var checkPw = sessionStorage.getItem(storageKey);',
+    '        try {',
+    '          var res = await fetch("/api/reset?pw=" + encodeURIComponent(checkPw), { method: "POST" });',
+    '          if (res.ok) {',
+    '            alert("System reset successful!");',
+    '            loadStats();',
+    '          } else { alert("Reset failed: Status " + res.status); }',
+    '        } catch (err) { alert("Error: " + err.message); }',
+    '      };',
     '      loadStats();',
     '    })();',
     '  </script>',
@@ -223,6 +249,24 @@ async function bootstrap() {
       if (!password) return res.status(500).json({ error: 'Config error' });
       if (provided === password) return res.json(await dashboardService.getStats());
       res.status(401).json({ error: 'Unauthorized' });
+    });
+
+    // API Reset
+    app.post('/api/reset', async (req, res) => {
+      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
+      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
+      if (!password || provided !== password) return res.status(401).json({ error: 'Unauthorized' });
+      await dashboardService.resetStats();
+      res.json({ success: true });
+    });
+
+    // API Broadcast
+    app.post('/api/broadcast', async (req, res) => {
+      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
+      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
+      if (!password || provided !== password) return res.status(401).json({ error: 'Unauthorized' });
+      await commandHandler.handleBroadcast(req.body.message, adapters[0]); // Assuming first adapter is sufficient for broadcast
+      res.json({ success: true });
     });
 
     // BIND TO PORT IMMEDIATELY
