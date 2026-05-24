@@ -135,12 +135,15 @@ export class CommandHandler {
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: mood.header,
-      body: `${mood.emoji} Status: ${user.status.toUpperCase()}\n${mood.accent} Interests: ${user.interests.join(', ') || 'None'}\n\n🔥 *Trending:* ${trending.join(', ')}\n\nWhat would you like to do?`,
+      body: mood.emoji + " Status: " + user.status.toUpperCase() + "\n" + mood.accent + " Interests: " + (user.interests.join(', ') || 'None') + "\n\n🔥 *Trending:* " + trending.join(', ') + "\n\nWhat would you like to do?",
       buttons: [
         { id: 'match_now', text: '🔎 Find Match' },
         { id: 'view_profile', text: '👤 View Profile' },
         { id: 'start_onboarding', text: '📝 Edit Profile' },
-        { id: 'reset_profile', text: '🔄 Reset All' }
+        { id: 'reset_profile', text: '🔄 Reset All' },
+        { id: 'random_match', text: '🎲 Random Match' }
+      ],
+      footer: mood.footer
     });
   }
 
@@ -264,9 +267,11 @@ export class CommandHandler {
         break;
 
       case 'view_profile':
+        const prefText = user.prefGender === 'male' ? 'Men 👨' : (user.prefGender === 'female' ? 'Women 👩' : 'Anyone 🌟');
+        const interestsStr = user.interests.join(', ') || 'None';
         await adapter.sendMessage(externalId, {
           type: 'text',
-          content: `👤 *Your Profile*\n\nUsername: ${user.username}\nGender: ${user.gender || 'Not set'}\nInterested in: ${user.prefGender === 'male' ? 'Men 👨' : (user.prefGender === 'female' ? 'Women 👩' : 'Anyone 🌟')}\nPurpose: ${user.purpose || 'Not set'}\nInterests: ${user.interests.join(', ') || 'None'}`
+          content: "👤 *Your Profile*\n\nUsername: " + user.username + "\nGender: " + (user.gender || 'Not set') + "\nInterested in: " + prefText + "\nPurpose: " + (user.purpose || 'Not set') + "\nInterests: " + interestsStr
         });
         await this.showMainMenu(externalId, adapter);
         break;
@@ -404,10 +409,19 @@ export class CommandHandler {
 
     const waitingCount = await this.userService.getSearchingCount();
     const queueMsg = waitingCount > 0 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
+
     await adapter.sendMessage(externalId, {
-er for niche interests. Would you like to try a random match?`,      buttons: [
+      type: 'buttons',
+      title: '🔎 SEARCHING...',
+      body: "Searching for: " + (user.interests.join(', ') || 'Global') + "\n\n👥 " + queueMsg + "\n\nMatching can take longer for niche interests. Would you like to try a random match?",
+      buttons: [
+        { id: 'random_match', text: '🎲 Random Match' },
+        { id: 'stop', text: '🚪 Stop' }
+      ]
     });
 
+    const match = await this.matchmaker.findMatch(userId);
+    if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
       // Issue #6: Re-engagement - Notify idle users who might want to match
@@ -460,11 +474,11 @@ er for niche interests. Would you like to try a random match?`,      buttons: [
     const partner = partnerId ? await this.userService.getUserById(partnerId) : null;
 
     if (partner) {
-      if ((partner as any).isReady) {
+      if (partner.isReady) {
         const startMsg = "🚀 *CONNECTED!* You can now send messages. Have fun!\n\n🤝 /add | 🛡️ /block | 🚪 /stop";
         await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
         
-        const partnerAdapter = this.relayService['adapters'].get(partner.platform);
+        const partnerAdapter = (this.relayService as any).adapters.get(partner.platform);
         if (partnerAdapter) await partnerAdapter.sendMessage(partner.externalId, { type: 'text', content: startMsg });
       } else {
         await adapter.sendMessage(user.externalId, { type: 'text', content: '✅ Status: Ready. Waiting for the stranger...' });
@@ -507,7 +521,7 @@ er for niche interests. Would you like to try a random match?`,      buttons: [
     const users = result.rows.filter((r: any) => r.platform === adapter.getPlatform());
     for (const user of users) {
       try {
-        await adapter.sendMessage(user.external_id, { type: 'text', content: `📢 ADMIN:\n\n${message}` });
+        await adapter.sendMessage(user.external_id, { type: 'text', content: "📢 ADMIN:\n\n" + message });
       } catch (err) {}
     }
   }
@@ -605,15 +619,32 @@ er for niche interests. Would you like to try a random match?`,      buttons: [
   private async sendHelpMessage(externalId: string, adapter: IPlatformAdapter) {
     await adapter.sendMessage(externalId, {
       type: 'text',
-      content: '📖 *Moxie Guide*\n\n' +
-        '🔎 *Match:* /match - Find a stranger who shares your interests.\n' +
-        '🚪 *Stop:* /stop - End your current chat safely.\n' +
-        '🛡️ *Block:* /block - Stop someone from matching with you again.\n' +
+      content: "📖 *Moxie Guide*\n\n" +
+        "🔎 *Match:* /match - Find a stranger who shares your interests.\n" +
+        "🚪 *Stop:* /stop - End your current chat safely.\n" +
+        "🛡️ *Block:* /block - Stop someone from matching with you again.\n" +
+        "🚩 *Report:* /report - Report abuse to the admin.\n" +
+        "🤝 *Add:* /add - Send a friend request to stay in touch.\n" +
+        "👤 *Profile:* /profile - View or edit your interests.\n" +
+        "💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n" +
+        "Need more help? Just message us!"
+    });
+  }
+}
         '🚩 *Report:* /report - Report abuse to the admin.\n' +
         '🤝 *Add:* /add - Send a friend request to stay in touch.\n' +
         '👤 *Profile:* /profile - View or edit your interests.\n' +
         '💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n' +
         'Need more help? Just message us!'
+      content: "📖 *Moxie Guide*\n\n" +
+        "🔎 *Match:* /match - Find a stranger who shares your interests.\n" +
+        "🚪 *Stop:* /stop - End your current chat safely.\n" +
+        "🛡️ *Block:* /block - Stop someone from matching with you again.\n" +
+        "🚩 *Report:* /report - Report abuse to the admin.\n" +
+        "🤝 *Add:* /add - Send a friend request to stay in touch.\n" +
+        "👤 *Profile:* /profile - View or edit your interests.\n" +
+        "💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n" +
+        "Need more help? Just message us!"
     });
   }
 }
