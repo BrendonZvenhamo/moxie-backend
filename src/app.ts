@@ -62,6 +62,11 @@ async function syncDatabase() {
       ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     `);
 
+    // 5. Ensure indexes exist for performance
+    await query(`CREATE INDEX IF NOT EXISTS idx_users_last_activity ON users(last_activity_at)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_users_trust_score ON users(trust_score)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_matches_last_activity ON matches(last_activity_at)`);
+
     console.log('✅ Database sync complete.');
   } catch (err: any) {
     console.warn('⚠️ Database sync warning (tables might already exist or need manual setup):', err.message);
@@ -107,7 +112,7 @@ const DASHBOARD_HTML = (password: string) => {
     '  <div id="main-content" style="display:none">',
     '    <div class="container">',
     '      <header>',
-    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.2</span></h1>',
+    '        <h1>🦁 Moxie Admin Dashboard <span style="font-size: 12px; background: #e4e6eb; padding: 4px 8px; border-radius: 20px; color: #65676b;">v1.1.3</span></h1>',
     '        <div style="display:flex; gap:10px;">',
     '        <button class="refresh-btn" id="refresh-btn">Refresh Data</button>',
     '        <button class="refresh-btn" id="broadcast-btn" style="background: #007bff;">Broadcast Message</button>',
@@ -242,37 +247,39 @@ async function bootstrap() {
     app.get('/privacy', (req, res) => {
       res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
     });
+    
+    const verifyDashboardAuth = (req: Request): boolean => {
+      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
+      if (!password) return false;
+      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
+      return provided === password;
+    };
 
     // API stats
     app.get('/api/stats', async (req, res) => {
-      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
-      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
-      if (!password) return res.status(500).json({ error: 'Config error' });
-      if (provided === password) return res.json(await dashboardService.getStats());
-      res.status(401).json({ error: 'Unauthorized' });
+      if (!verifyDashboardAuth(req)) {
+        console.warn('Unauthorized access attempt to /api/stats');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      res.json(await dashboardService.getStats());
     });
 
     // API Reset
     app.post('/api/reset', async (req, res) => {
-      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
-      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
-      if (!password || provided !== password) return res.status(401).json({ error: 'Unauthorized' });
+      if (!verifyDashboardAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
       await dashboardService.resetStats();
       res.json({ success: true });
     });
 
     // API Broadcast
     app.post('/api/broadcast', async (req, res) => {
-      const password = (process.env.DASHBOARD_PASSWORD || '').trim();
-      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
-      if (!password || provided !== password) return res.status(401).json({ error: 'Unauthorized' });
-      
-      if (adapters.length > 0) {
+      if (!verifyDashboardAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
+      if (adapters.length > 0 && req.body.message) {
         await commandHandler.handleBroadcast(req.body.message, adapters[0]);
+        res.json({ success: true });
       } else {
-        return res.status(500).json({ error: 'No active adapters' });
+        res.status(400).json({ error: 'Broadcast failed' });
       }
-      res.json({ success: true });
     });
 
     // BIND TO PORT IMMEDIATELY
@@ -280,7 +287,7 @@ async function bootstrap() {
       console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
 
-    // Background Maintenance: Run every 30 seconds for better responsiveness
+    // Background Maintenance: Run every 60 seconds
     setInterval(async () => {
       // 1. Cleanup stale handshakes (2 min timeout)
       const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
@@ -294,19 +301,21 @@ async function bootstrap() {
         await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
       }
 
-      // 3. Periodic Match Re-check
-      const searchers = await userService.getSearchingUsers();
-      for (const s of searchers) {
+      // 3. Periodic Match Re-check (limited batch for stability)
+      const allSearchers = await userService.getSearchingUsers();
+      const batch = allSearchers.slice(0, 5);
+      
+      for (const s of batch) {
         // If waiting for more than 3 minutes, automatically try a random match
         const waitTime = Date.now() - new Date(s.lastMatchAttemptAt || s.createdAt).getTime();
         const shouldRandomize = waitTime > 3 * 60000;
 
-        const match = await matchmakingService.findMatch(s.id, shouldRandomize);
+        const match = await matchmakingService.findMatch(s.id, shouldRandomize, s);
         if (match) {
           await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
         }
       }
-    }, 30000);
+    }, 60000);
 
     // Handle adapters
     const adapters: any[] = [];

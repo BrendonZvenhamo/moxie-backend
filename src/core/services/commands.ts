@@ -441,7 +441,7 @@ export class CommandHandler {
     await this.userService.updateStatus(userId, UserStatus.SEARCHING);
 
     // 2. Try to find a match immediately
-    const match = await this.matchmaker.findMatch(userId);
+    const match = await this.matchmaker.findMatch(userId, false, user);
     
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
@@ -473,7 +473,7 @@ export class CommandHandler {
 
     await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
 
-    const match = await this.matchmaker.findMatch(userId, true);
+    const match = await this.matchmaker.findMatch(userId, true, user);
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {

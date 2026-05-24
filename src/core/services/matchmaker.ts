@@ -10,9 +10,15 @@ export class MatchmakingService {
    * Attempt to find a match for a user based on shared interests.
    * If a match is found, it creates the match in the DB and updates both users.
    */
-  async findMatch(userId: string, isRandom: boolean = false): Promise<Match | null> {
-    const user = await this.userService.getUserById(userId);
-    if (!user || user.status !== UserStatus.SEARCHING || (!isRandom && user.normalizedInterests.length === 0)) return null;
+  async findMatch(userId: string, isRandom: boolean = false, existingUser?: User): Promise<Match | null> {
+    const user = existingUser || await this.userService.getUserById(userId);
+    
+    if (!user || 
+        user.status !== UserStatus.SEARCHING || 
+        (!isRandom && (user.normalizedInterests || []).length === 0)
+    ) {
+      return null;
+    }
 
     return withTransaction(async (client) => {
       // Find another user who is 'searching', not the same user, 
