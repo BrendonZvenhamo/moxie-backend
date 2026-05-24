@@ -138,7 +138,7 @@ const DASHBOARD_HTML = (password: string) => {
     '  </div>',
     '  <script>',
     '    (function() {',
-    '      var urlPw = "' + password + '";',
+    '      var urlPw = ' + JSON.stringify(password) + ';',
     '      var storageKey = "moxie_admin_pw";',
     '      async function loadStats(inputPw) {',
     '        var checkPw = inputPw || urlPw || sessionStorage.getItem(storageKey);',
@@ -250,9 +250,16 @@ async function bootstrap() {
     
     const verifyDashboardAuth = (req: Request): boolean => {
       const password = (process.env.DASHBOARD_PASSWORD || '').trim();
-      if (!password) return false;
-      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
-      return provided === password;
+      if (!password) {
+        console.warn('DASHBOARD_PASSWORD not set in environment!');
+        return false;
+      }
+      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || req.query.password || '')).trim();
+      const isMatch = provided === password;
+      if (!isMatch && provided) {
+        console.warn(`Unauthorized dashboard attempt. Provided: "${provided}", Expected: "${password}"`);
+      }
+      return isMatch;
     };
 
     // API stats
@@ -302,8 +309,7 @@ async function bootstrap() {
       }
 
       // 3. Periodic Match Re-check (limited batch for stability)
-      const allSearchers = await userService.getSearchingUsers();
-      const batch = allSearchers.slice(0, 5);
+      const batch = await userService.getSearchingUsers(5);
       
       for (const s of batch) {
         // If waiting for more than 3 minutes, automatically try a random match

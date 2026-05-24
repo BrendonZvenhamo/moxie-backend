@@ -93,8 +93,8 @@ export class UserService {
   /**
    * Get all users currently in the searching state.
    */
-  async getSearchingUsers(): Promise<User[]> {
-    const result = await query("SELECT * FROM users WHERE status = 'searching'");
+  async getSearchingUsers(limit: number = 100): Promise<User[]> {
+    const result = await query("SELECT * FROM users WHERE status = 'searching' LIMIT $1", [limit]);
     return result.rows.map(row => this.mapRowToUser(row));
   }
 

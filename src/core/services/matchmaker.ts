@@ -52,12 +52,11 @@ export class MatchmakingService {
         AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
         AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
         -- Issue #4: Prioritize users with similar quality/behavior scores
-        -- Similarity is calculated by minimizing the absolute difference in trust_score
         ORDER BY 
           (CASE WHEN mood = $7 AND $7 != 'None' THEN 3 ELSE 0 END) + 
           (CASE WHEN mood != 'None' THEN 1 ELSE 0 END) + 
           overlap_count DESC, 
-          ABS(trust_score - (SELECT trust_score FROM users WHERE id = $1)) ASC
+          ABS(trust_score - $8) ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED;
       `;
@@ -69,7 +68,8 @@ export class MatchmakingService {
         user.prefGender || 'both',
         user.gender || 'other',
         isRandom,
-        user.mood || ''
+        user.mood || '',
+        user.trustScore || 100
       ]);
 
       if (result.rows.length === 0) {

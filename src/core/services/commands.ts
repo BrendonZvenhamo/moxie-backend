@@ -306,6 +306,10 @@ export class CommandHandler {
         await this.sendHelpMessage(externalId, adapter);
         break;
 
+      case 'ready_confirm':
+        await this.handleReadyConfirm(user.id, adapter);
+        break;
+
       case 'accept_friend':
         await this.handleAcceptContact(user.id, adapter);
         break;
@@ -471,13 +475,15 @@ export class CommandHandler {
     const user = await this.userService.getUserById(userId);
     if (!user) return;
 
+    // 1. Set status to searching first so findMatch doesn't reject it
+    await this.userService.updateStatus(userId, UserStatus.SEARCHING);
+
     await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
 
     const match = await this.matchmaker.findMatch(userId, true, user);
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
-      await this.userService.updateStatus(userId, UserStatus.SEARCHING);
       try {
         await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
       } catch (error) {
