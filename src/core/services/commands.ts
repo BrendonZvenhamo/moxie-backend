@@ -479,23 +479,24 @@ export class CommandHandler {
   }
 
   private async handleRandomMatch(userId: string, externalId: string, adapter: IPlatformAdapter) {
-    const user = await this.userService.getUserById(userId);
-    if (!user) return;
+    try {
+      // 1. Set status to searching first
+      await this.userService.updateStatus(userId, UserStatus.SEARCHING);
+      await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
 
-    // 1. Set status to searching first so findMatch doesn't reject it
-    await this.userService.updateStatus(userId, UserStatus.SEARCHING);
-
-    await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
-
-    const match = await this.matchmaker.findMatch(userId, true, user);
-    if (match) {
-      await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
-    } else {
-      try {
+      // 2. Try to find a match (don't pass old user object, let it fetch fresh)
+      const match = await this.matchmaker.findMatch(userId, true);
+      
+      if (match) {
+        console.log(`Random match success: ${match.id}`);
+        await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+      } else {
+        console.log(`No random match found for ${userId}, staying in queue.`);
         await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
-      } catch (error) {
-        console.error(`Failed to send 'Still searching' message to ${externalId}:`, error);
       }
+    } catch (error: any) {
+      console.error('Error in handleRandomMatch:', error);
+      throw error; // Let the caller handle it or catch it here
     }
   }
 

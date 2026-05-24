@@ -80,11 +80,16 @@ export class MatchmakingService {
       }
 
       const partner = result.rows[0];
+      console.log(`Match found between ${userId} and ${partner.id}`);
 
       // For shared interests, we'll show the actual words that overlapped
-      const sharedInterests = user.interests.filter(i => {
+      const partnerNormalized = partner.normalized_interests || [];
+      const userInterests = user.interests || [];
+
+      const sharedInterests = userInterests.filter(i => {
+        if (!i) return false;
         const res = normalizeInterest(i);
-        return res.cluster && partner.normalized_interests.includes(res.cluster);
+        return res.cluster && partnerNormalized.includes(res.cluster);
       });
 
       // Create the match
