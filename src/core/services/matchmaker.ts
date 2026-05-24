@@ -37,6 +37,7 @@ export class MatchmakingService {
         WHERE status = 'searching' 
         AND id != $1 
         AND is_banned = FALSE
+        AND platform = 'whatsapp'
         AND ($6 = TRUE OR normalized_interests && $2)
         AND (
           purpose = 'both' OR $3 = 'both' OR purpose = $3

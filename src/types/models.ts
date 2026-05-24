@@ -1,6 +1,5 @@
 export enum Platform {
   WHATSAPP = 'whatsapp',
-  TELEGRAM = 'telegram',
 }
 
 export enum UserStatus {
@@ -11,7 +10,7 @@ export enum UserStatus {
 
 export interface User {
   id: string; // Internal UUID
-  externalId: string; // WhatsApp number or Telegram ID
+  externalId: string; // WhatsApp number
   platform: Platform;
   username?: string;
   bio?: string;

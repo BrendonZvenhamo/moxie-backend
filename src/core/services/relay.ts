@@ -169,11 +169,19 @@ export class RelayService {
       };
 
       if (a1) {
-        await a1.sendMessage(u1.externalId, matchMsg as any);
+        try {
+          await a1.sendMessage(u1.externalId, matchMsg as any);
+        } catch (error) {
+          console.error(`Failed to send match notification to user 1 (${u1.externalId}):`, error);
+        }
       }
 
       if (a2) {
-        await a2.sendMessage(u2.externalId, matchMsg as any);
+        try {
+          await a2.sendMessage(u2.externalId, matchMsg as any);
+        } catch (error) {
+          console.error(`Failed to send match notification to user 2 (${u2.externalId}):`, error);
+        }
       }
     }
   }

@@ -8,7 +8,6 @@ import { CommandHandler } from './core/services/commands';
 import { RelayService } from './core/services/relay';
 import { DashboardService } from './core/services/dashboard';
 import { RateLimiter } from './utils/rate-limiter';
-import { TelegramAdapter } from './adapters/telegram/adapter';
 import { OfficialWhatsAppAdapter } from './adapters/whatsapp/official';
 import { Platform } from './types/models';
 
@@ -325,13 +324,6 @@ async function bootstrap() {
 
     // Handle adapters
     const adapters: any[] = [];
-    if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {
-      try {
-        const tg = new TelegramAdapter(process.env.TELEGRAM_BOT_TOKEN);
-        adapters.push(tg);
-        relayService.registerAdapter(Platform.TELEGRAM, tg);
-      } catch (e) { console.error('Telegram registration failed'); }
-    }
 
     try {
       const wa = new OfficialWhatsAppAdapter();

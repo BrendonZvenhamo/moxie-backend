@@ -7,7 +7,6 @@ export interface DashboardStats {
   idleUsers: number;
   platformStats: {
     whatsapp: number;
-    telegram: number;
   };
   activeMatches: number;
   recentMatches: any[];
@@ -22,7 +21,7 @@ export class DashboardService {
       searchingUsers: 0,
       matchedUsers: 0,
       idleUsers: 0,
-      platformStats: { whatsapp: 0, telegram: 0 },
+      platformStats: { whatsapp: 0 },
       activeMatches: 0,
       recentMatches: [],
       feedbacks: [],
@@ -44,9 +43,6 @@ export class DashboardService {
       
       const waResult = await query("SELECT count(*) FROM users WHERE platform = 'whatsapp'");
       stats.platformStats.whatsapp = parseInt(waResult.rows[0].count);
-      
-      const tgResult = await query("SELECT count(*) FROM users WHERE platform = 'telegram'");
-      stats.platformStats.telegram = parseInt(tgResult.rows[0].count);
       
       const amResult = await query("SELECT count(*) FROM matches WHERE ended_at IS NULL");
       stats.activeMatches = parseInt(amResult.rows[0].count);

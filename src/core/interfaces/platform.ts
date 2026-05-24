@@ -2,7 +2,7 @@ import { Message } from '../../types/messages';
 import { Platform } from '../../types/models';
 
 export interface IncomingMessage {
-  externalId: string; // Platform-specific ID (number or telegram ID)
+  externalId: string; // Platform-specific ID (WhatsApp number)
   username?: string;
   text?: string;
   media?: {
@@ -15,12 +15,12 @@ export interface IncomingMessage {
 
 export interface IPlatformAdapter {
   /**
-   * Initialize the platform (e.g., login, connect to websocket)
+   * Initialize the platform (e.g., Meta API connection)
    */
   initialize(): Promise<void>;
 
   /**
-   * Get the platform identifier (whatsapp or telegram)
+   * Get the platform identifier (whatsapp)
    */
   getPlatform(): Platform;
 

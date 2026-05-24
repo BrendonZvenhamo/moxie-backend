@@ -534,7 +534,13 @@ export class CommandHandler {
         await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
         
         const partnerAdapter = this.relayService.adapters.get(partner.platform);
-        if (partnerAdapter) await partnerAdapter.sendMessage(partner.externalId, { type: 'text', content: startMsg });
+        if (partnerAdapter) {
+          try {
+            await partnerAdapter.sendMessage(partner.externalId, { type: 'text', content: startMsg });
+          } catch (e) {
+            console.error(`Failed to notify partner (${partner.externalId}) of match connection:`, e);
+          }
+        }
       } else {
         await adapter.sendMessage(user.externalId, { type: 'text', content: '✅ Status: Ready. Waiting for the stranger...' });
       }
