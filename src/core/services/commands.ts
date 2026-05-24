@@ -458,7 +458,6 @@ export class CommandHandler {
       if (partnerId) await this.relayService.notifyMatchEnded(partnerId, 'Stranger left');
     } else {
       await this.userService.updateStatus(userId, UserStatus.IDLE, null, null);
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Stopped.' });
       await this.showMainMenu(externalId, adapter);
     }
   }
@@ -516,7 +515,7 @@ export class CommandHandler {
     }
   }
 
-  private async handleBroadcast(message: string, adapter: IPlatformAdapter) {
+  public async handleBroadcast(message: string, adapter: IPlatformAdapter) {
     if (!message) return;
     const { query } = require('../../infrastructure/database/pool');
     const result = await query('SELECT external_id, platform FROM users WHERE is_banned = FALSE');

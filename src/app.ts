@@ -265,7 +265,12 @@ async function bootstrap() {
       const password = (process.env.DASHBOARD_PASSWORD || '').trim();
       const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || '')).trim();
       if (!password || provided !== password) return res.status(401).json({ error: 'Unauthorized' });
-      await commandHandler.handleBroadcast(req.body.message, adapters[0]); // Assuming first adapter is sufficient for broadcast
+      
+      if (adapters.length > 0) {
+        await commandHandler.handleBroadcast(req.body.message, adapters[0]);
+      } else {
+        return res.status(500).json({ error: 'No active adapters' });
+      }
       res.json({ success: true });
     });
 
@@ -274,7 +279,7 @@ async function bootstrap() {
       console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
 
-    // Background Maintenance: Run every minute
+    // Background Maintenance: Run every 30 seconds for better responsiveness
     setInterval(async () => {
       // 1. Cleanup stale handshakes (2 min timeout)
       const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
@@ -288,16 +293,19 @@ async function bootstrap() {
         await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
       }
 
-      // 3. Periodic Match Re-check (Every 30 seconds)
+      // 3. Periodic Match Re-check
       const searchers = await userService.getSearchingUsers();
       for (const s of searchers) {
-        // Attempt to find a match for those waiting
-        const match = await matchmakingService.findMatch(s.id);
+        // If waiting for more than 3 minutes, automatically try a random match
+        const waitTime = Date.now() - new Date(s.lastMatchAttemptAt || s.createdAt).getTime();
+        const shouldRandomize = waitTime > 3 * 60000;
+
+        const match = await matchmakingService.findMatch(s.id, shouldRandomize);
         if (match) {
           await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
         }
       }
-    }, 60000);
+    }, 30000);
 
     // Handle adapters
     const adapters: any[] = [];
