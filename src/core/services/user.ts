@@ -322,6 +322,10 @@ export class UserService {
       activeContactId: row.active_contact_id,
       isReady: row.is_ready || false,
       isBanned: row.is_banned || false,
+      trustScore: row.trust_score,
+      acceptMedia: row.accept_media,
+      lastMatchAttemptAt: row.last_match_attempt_at,
+      lastActivityAt: row.last_activity_at,
       blockedUserIds: [], // These could be loaded via a separate join if needed
       contactIds: [],
       pendingContactIds: [],
