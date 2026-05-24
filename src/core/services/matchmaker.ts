@@ -57,7 +57,8 @@ export class MatchmakingService {
         user.purpose || 'both',
         user.prefGender || 'both',
         user.gender || 'other',
-        isRandom
+        isRandom,
+        user.mood || ''
       ]);
 
       if (result.rows.length === 0) {

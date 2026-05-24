@@ -18,6 +18,7 @@ export interface User {
   gender?: string;
   prefGender?: string;
   purpose?: string;
+  mood?: string;
   onboardingStep: string;
   interests: string[];
   normalizedInterests: string[];

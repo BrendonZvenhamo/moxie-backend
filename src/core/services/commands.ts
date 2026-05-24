@@ -4,6 +4,7 @@ import { RelayService } from './relay';
 import { IncomingMessage, IPlatformAdapter } from '../interfaces/platform';
 import { Platform, UserStatus } from '../../types/models';
 import { getMoodDecoration } from '../../utils/mood';
+import { getTrustRank } from '../../utils/trust';
 
 export class CommandHandler {
   constructor(
@@ -131,11 +132,21 @@ export class CommandHandler {
     const user = await this.userService.getOrCreateUser(externalId, adapter.getPlatform());
     const mood = getMoodDecoration(user.purpose);
     const trending = await this.userService.getTrendingInterests();
+    const rank = getTrustRank(user.trustScore);
+    const stats = await this.userService.getGlobalStats();
+
+    const body = mood.emoji + " Status: " + user.status.toUpperCase() + "\n" +
+                 rank.emoji + " Rank: " + rank.name + " (" + user.trustScore + " pts)\n" +
+                 "✨ Vibe: " + (user.mood || 'Not set') + "\n" +
+                 mood.accent + " Interests: " + (user.interests.join(', ') || 'None') + "\n\n" +
+                 "🔥 *Trending:* " + trending.join(', ') + "\n" +
+                 "🌍 *Community:* " + stats.activeNow + " online | " + stats.matchesToday + " matches today\n\n" +
+                 "What would you like to do?";
 
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: mood.header,
-      body: mood.emoji + " Status: " + user.status.toUpperCase() + "\n" + mood.accent + " Interests: " + (user.interests.join(', ') || 'None') + "\n\n🔥 *Trending:* " + trending.join(', ') + "\n\nWhat would you like to do?",
+      body: body,
       buttons: [
         { id: 'match_now', text: '🔎 Find Match' },
         { id: 'view_profile', text: '👤 View Profile' },
@@ -174,6 +185,16 @@ export class CommandHandler {
       case 'purpose_both':
         const purpose = buttonId.split('_')[1];
         await this.userService.updatePurpose(user.id, purpose);
+        await this.userService.updateOnboardingStep(user.id, 'interests');
+        await this.showInterestSelection(externalId, adapter);
+        break;
+
+      case 'vibe_chilling':
+      case 'vibe_deep':
+      case 'vibe_high':
+      case 'vibe_fun':
+        const selectedVibe = buttonId.split('_')[1];
+        await this.userService.updateMood(user.id, selectedVibe);
         await this.userService.updateOnboardingStep(user.id, 'interests');
         await this.showInterestSelection(externalId, adapter);
         break;
@@ -269,9 +290,12 @@ export class CommandHandler {
       case 'view_profile':
         const prefText = user.prefGender === 'male' ? 'Men 👨' : (user.prefGender === 'female' ? 'Women 👩' : 'Anyone 🌟');
         const interestsStr = user.interests.join(', ') || 'None';
+        const userRank = getTrustRank(user.trustScore);
         await adapter.sendMessage(externalId, {
           type: 'text',
-          content: "👤 *Your Profile*\n\nUsername: " + user.username + "\nGender: " + (user.gender || 'Not set') + "\nInterested in: " + prefText + "\nPurpose: " + (user.purpose || 'Not set') + "\nInterests: " + interestsStr
+          content: "👤 *Your Profile*\n\n" +
+            "Rank: " + userRank.emoji + " " + userRank.name + " (" + user.trustScore + ")\n" +
+            "Username: " + user.username + "\nGender: " + (user.gender || 'Not set') + "\nInterested in: " + prefText + "\nVibe: " + (user.mood || 'None') + "\nInterests: " + interestsStr
         });
         await this.showMainMenu(externalId, adapter);
         break;
@@ -536,6 +560,19 @@ export class CommandHandler {
         { id: 'purpose_friendship', text: '🤝 Friendship' },
         { id: 'purpose_dating', text: '💘 Dating' },
         { id: 'purpose_both', text: '🌟 Both' }
+      ]
+    });
+    // After purpose, we now ask for the Vibe
+    await this.userService.updateOnboardingStep((await this.userService.getOrCreateUser(externalId, adapter.getPlatform())).id, 'vibe');
+    await adapter.sendMessage(externalId, {
+      type: 'buttons',
+      title: '✨ SELECT YOUR VIBE',
+      body: 'How are you feeling right now? We will match you with people in the same mood.',
+      buttons: [
+        { id: 'vibe_chilling', text: '☕ Chilling' },
+        { id: 'vibe_deep', text: '🧐 Intellectual' },
+        { id: 'vibe_high', text: '🚀 High Energy' },
+        { id: 'vibe_fun', text: '🎭 Just for Fun' }
       ]
     });
   }

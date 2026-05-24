@@ -114,6 +114,29 @@ export class UserService {
   }
 
   /**
+   * Get global stats for social proof.
+   */
+  async getGlobalStats(): Promise<{ activeNow: number, matchesToday: number }> {
+    const activeResult = await query(
+      "SELECT count(*) FROM users WHERE last_activity_at > (CURRENT_TIMESTAMP - INTERVAL '15 minutes')"
+    );
+    const matchesResult = await query(
+      "SELECT count(*) FROM matches WHERE started_at > (CURRENT_TIMESTAMP - INTERVAL '24 hours')"
+    );
+    return {
+      activeNow: parseInt(activeResult.rows[0].count),
+      matchesToday: parseInt(matchesResult.rows[0].count)
+    };
+  }
+
+  /**
+   * Update a user's mood.
+   */
+  async updateMood(userId: string, mood: string): Promise<void> {
+    await query('UPDATE users SET mood = $1 WHERE id = $2', [mood, userId]);
+  }
+
+  /**
    * Update last activity for a user.
    */
   async updateLastActivity(userId: string): Promise<void> {
@@ -322,6 +345,7 @@ export class UserService {
       gender: row.gender,
       prefGender: row.pref_gender,
       purpose: row.purpose,
+      mood: row.mood,
       onboardingStep: row.onboarding_step || 'start',
       interests: row.interests || [],
       normalizedInterests: row.normalized_interests || [],
