@@ -5,7 +5,7 @@ import { Platform } from '../../types/models';
 import { getMoodDecoration } from '../../utils/mood';
 
 export class RelayService {
-  private adapters: Map<Platform, IPlatformAdapter> = new Map();
+  public adapters: Map<Platform, IPlatformAdapter> = new Map();
   private chatBuffers: Map<string, { sender: string, text: string }[]> = new Map();
 
   constructor(
@@ -36,8 +36,8 @@ export class RelayService {
         contextId = match.id;
         await this.matchmaker.updateMatchActivity(match.id);
       }
-    } else if ((user as any).activeContactId) {
-      partnerId = (user as any).activeContactId;
+    } else if (user.activeContactId) {
+      partnerId = user.activeContactId;
       contextId = `private_${user.id}_${partnerId}`;
     }
 
@@ -46,7 +46,7 @@ export class RelayService {
     // Issue #5: Block relaying if in a stranger match but not both ready
     if (user.currentMatchId) {
       const partner = await this.userService.getUserById(partnerId);
-      if (partner && (!(user as any).isReady || !(partner as any).isReady)) {
+      if (partner && (!user.isReady || !partner.isReady)) {
         const sourceAdapter = this.adapters.get(sourcePlatform);
         if (sourceAdapter) {
           await sourceAdapter.sendMessage(user.externalId, { type: 'text', content: '⏳ Waiting for both users to click "I\'m Ready" before opening the chat.' });

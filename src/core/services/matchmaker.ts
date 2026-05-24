@@ -42,11 +42,16 @@ export class MatchmakingService {
         AND (
           pref_gender = 'both' OR pref_gender = $5
         )
+        -- Feature #5: Prioritize same Mood/Vibe
         AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
         AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
         -- Issue #4: Prioritize users with similar quality/behavior scores
         -- Similarity is calculated by minimizing the absolute difference in trust_score
-        ORDER BY overlap_count DESC, ABS(trust_score - (SELECT trust_score FROM users WHERE id = $1)) ASC
+        ORDER BY 
+          (CASE WHEN mood = $7 AND $7 != 'None' THEN 3 ELSE 0 END) + 
+          (CASE WHEN mood != 'None' THEN 1 ELSE 0 END) + 
+          overlap_count DESC, 
+          ABS(trust_score - (SELECT trust_score FROM users WHERE id = $1)) ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED;
       `;
