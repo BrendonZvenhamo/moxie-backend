@@ -410,12 +410,14 @@ export class CommandHandler {
     const waitingCount = await this.userService.getSearchingCount();
     const queueMsg = waitingCount > 0 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
 
+    const interestsStr = user.interests.join(', ') || 'Global';
+
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: '🔎 SEARCHING...',
-      body: "Searching for: " + (user.interests.join(', ') || 'Global') + "\n\n👥 " + queueMsg + "\n\nMatching can take longer for niche interests. Would you like to try a random match?",
+      body: "You are currently searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNone of the active users share these interests yet. Would you like to connect with someone random instead?",
       buttons: [
-        { id: 'random_match', text: '🎲 Random Match' },
+        { id: 'random_match', text: '🎲 Yes, Randomize' },
         { id: 'stop', text: '🚪 Stop' }
       ]
     });

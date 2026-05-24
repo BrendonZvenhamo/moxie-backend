@@ -242,6 +242,16 @@ async function bootstrap() {
       for (const userId of inactiveMatches) {
         await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
       }
+
+      // 3. Periodic Match Re-check (Every 30 seconds)
+      const searchers = await userService.getSearchingUsers();
+      for (const s of searchers) {
+        // Attempt to find a match for those waiting
+        const match = await matchmakingService.findMatch(s.id);
+        if (match) {
+          await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+        }
+      }
     }, 60000);
 
     // Handle adapters

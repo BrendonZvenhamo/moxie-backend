@@ -91,6 +91,14 @@ export class UserService {
   }
 
   /**
+   * Get all users currently in the searching state.
+   */
+  async getSearchingUsers(): Promise<User[]> {
+    const result = await query("SELECT * FROM users WHERE status = 'searching'");
+    return result.rows.map(row => this.mapRowToUser(row));
+  }
+
+  /**
    * Get the most popular interests across the platform.
    */
   async getTrendingInterests(): Promise<string[]> {

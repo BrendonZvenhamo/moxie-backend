@@ -62,7 +62,7 @@ export class MatchmakingService {
 
       if (result.rows.length === 0) {
         // No match found, ensure user is in 'searching' status
-        await client.query("UPDATE users SET status = 'searching' WHERE id = $1", [userId]);
+        await client.query("UPDATE users SET status = 'searching', last_match_attempt_at = CURRENT_TIMESTAMP WHERE id = $1", [userId]);
         return null;
       }
 
