@@ -12,7 +12,7 @@ export class MatchmakingService {
    */
   async findMatch(userId: string, isRandom: boolean = false): Promise<Match | null> {
     const user = await this.userService.getUserById(userId);
-    if (!user || (!isRandom && user.normalizedInterests.length === 0)) return null;
+    if (!user || user.status !== UserStatus.SEARCHING || (!isRandom && user.normalizedInterests.length === 0)) return null;
 
     return withTransaction(async (client) => {
       // Find another user who is 'searching', not the same user, 

@@ -432,24 +432,29 @@ export class CommandHandler {
       return;
     }
 
-    const waitingCount = await this.userService.getSearchingCount();
-    const queueMsg = waitingCount > 0 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
+    // 1. Set status to searching first
+    await this.userService.updateStatus(userId, UserStatus.SEARCHING);
 
-    const interestsStr = user.interests.join(', ') || 'Global';
-
-    await adapter.sendMessage(externalId, {
-      type: 'buttons',
-      title: '🔎 SEARCHING...',
-      body: "You are currently searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNone of the active users share these interests yet. Would you like to connect with someone random instead?",
-      buttons: [
-        { id: 'random_match', text: '🎲 Yes, Randomize' },
-        { id: 'stop', text: '🚪 Stop' }
-      ]
-    });
-
+    // 2. Try to find a match immediately
     const match = await this.matchmaker.findMatch(userId);
+    
     if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+    } else {
+      // 3. Only if no match found, show the "Searching" status message
+      const waitingCount = await this.userService.getSearchingCount();
+      const queueMsg = waitingCount > 1 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
+      const interestsStr = user.interests.join(', ') || 'Global';
+
+      await adapter.sendMessage(externalId, {
+        type: 'buttons',
+        title: '🔎 SEARCHING...',
+        body: "Searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNo immediate match found. Want to try a random match or wait?",
+        buttons: [
+          { id: 'random_match', text: '🎲 Yes, Randomize' },
+          { id: 'stop', text: '🚪 Stop' }
+        ]
+      });
     }
   }
 
