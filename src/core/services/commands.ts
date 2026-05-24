@@ -193,10 +193,19 @@ export class CommandHandler {
       case 'vibe_deep':
       case 'vibe_high':
       case 'vibe_fun':
+      case 'vibe_skip':
         const selectedVibe = buttonId.split('_')[1];
-        await this.userService.updateMood(user.id, selectedVibe);
-        await this.userService.updateOnboardingStep(user.id, 'interests');
-        await this.showInterestSelection(externalId, adapter);
+        await this.userService.updateMood(user.id, selectedVibe === 'skip' ? 'None' : selectedVibe);
+        await this.userService.updateOnboardingStep(user.id, 'completed');
+        await adapter.sendMessage(externalId, {
+          type: 'buttons',
+          title: '🎉 ALL SET!',
+          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nYour privacy is 100% guaranteed.',
+          buttons: [
+            { id: 'match_now', text: '🔎 Find Match' },
+            { id: 'view_profile', text: '👤 View Profile' }
+          ]
+        });
         break;
 
       case 'interest_gaming':
@@ -247,16 +256,8 @@ export class CommandHandler {
       case 'pref_both':
         const pref = buttonId.split('_')[1];
         await this.userService.updatePrefGender(user.id, pref);
-        await this.userService.updateOnboardingStep(user.id, 'completed');
-        await adapter.sendMessage(externalId, {
-          type: 'buttons',
-          title: '🎉 ALL SET!',
-          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nYour privacy is 100% guaranteed.',
-          buttons: [
-            { id: 'match_now', text: '🔎 Find Match' },
-            { id: 'view_profile', text: '👤 View Profile' }
-          ]
-        });
+        await this.userService.updateOnboardingStep(user.id, 'vibe');
+        await this.showMoodSelection(externalId, adapter);
         break;
 
       case 'confirm_delete_profile':
@@ -556,8 +557,9 @@ export class CommandHandler {
         { id: 'purpose_both', text: '🌟 Both' }
       ]
     });
-    // After purpose, we now ask for the Vibe
-    await this.userService.updateOnboardingStep((await this.userService.getOrCreateUser(externalId, adapter.getPlatform())).id, 'vibe');
+  }
+
+  private async showMoodSelection(externalId: string, adapter: IPlatformAdapter) {
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: '✨ SELECT YOUR VIBE',
@@ -566,7 +568,8 @@ export class CommandHandler {
         { id: 'vibe_chilling', text: '☕ Chilling' },
         { id: 'vibe_deep', text: '🧐 Intellectual' },
         { id: 'vibe_high', text: '🚀 High Energy' },
-        { id: 'vibe_fun', text: '🎭 Just for Fun' }
+        { id: 'vibe_fun', text: '🎭 Just for Fun' },
+        { id: 'vibe_skip', text: '⏭️ Skip' }
       ]
     });
   }
