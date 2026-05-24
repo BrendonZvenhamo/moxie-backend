@@ -159,6 +159,7 @@ export class CommandHandler {
   }
 
   async handleButton(externalId: string, buttonId: string, adapter: IPlatformAdapter) {
+    try {
     const user = await this.userService.getOrCreateUser(externalId, adapter.getPlatform());
 
     switch (buttonId) {
@@ -317,6 +318,10 @@ export class CommandHandler {
         }
         break;
     }
+    } catch (error) {
+      console.error(`Error handling button ${buttonId} for user ${externalId}:`, error);
+      await adapter.sendMessage(externalId, { type: 'text', content: 'Oops! Something went wrong. Please try again or type /start.' });
+    }
   }
 
   private async handleResetProfile(userId: string, externalId: string, adapter: IPlatformAdapter) {
@@ -446,15 +451,19 @@ export class CommandHandler {
       const queueMsg = waitingCount > 1 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
       const interestsStr = user.interests.join(', ') || 'Global';
 
-      await adapter.sendMessage(externalId, {
-        type: 'buttons',
-        title: '🔎 SEARCHING...',
-        body: "Searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNo immediate match found. Want to try a random match or wait?",
-        buttons: [
-          { id: 'random_match', text: '🎲 Yes, Randomize' },
-          { id: 'stop', text: '🚪 Stop' }
-        ]
-      });
+      try {
+        await adapter.sendMessage(externalId, {
+          type: 'buttons',
+          title: '🔎 SEARCHING...',
+          body: "Searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNo immediate match found. Want to try a random match or wait?",
+          buttons: [
+            { id: 'random_match', text: '🎲 Yes, Randomize' },
+            { id: 'stop', text: '🚪 Stop' }
+          ]
+        });
+      } catch (error) {
+        console.error(`Failed to send searching message to ${externalId}:`, error);
+      }
     }
   }
 
@@ -469,7 +478,11 @@ export class CommandHandler {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
       await this.userService.updateStatus(userId, UserStatus.SEARCHING);
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
+      try {
+        await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
+      } catch (error) {
+        console.error(`Failed to send 'Still searching' message to ${externalId}:`, error);
+      }
     }
   }
 
@@ -648,6 +661,29 @@ export class CommandHandler {
     await adapter.sendMessage(externalId, {
       type: 'buttons',
       title: '🌟 WELCOME TO MOXIE',
+      body: 'Connect anonymously with strangers based on shared interests.\n\n🔒 PRIVACY: We do NOT store your messages, and your identity is hidden until you choose to reveal it.\n\n💬 Have feedback? Use /feedback to tell us what you think!',
+      buttons: [
+        { id: 'start_onboarding', text: '📝 Create Profile' },
+        { id: 'view_help', text: '❓ How it works' }
+      ]
+    });
+  }
+
+  private async sendHelpMessage(externalId: string, adapter: IPlatformAdapter) {
+    await adapter.sendMessage(externalId, {
+      type: 'text',
+      content: "📖 *Moxie Guide*\n\n" +
+        "🔎 *Match:* /match - Find a stranger who shares your interests.\n" +
+        "🚪 *Stop:* /stop - End your current chat safely.\n" +
+        "🛡️ *Block:* /block - Stop someone from matching with you again.\n" +
+        "🚩 *Report:* /report - Report abuse to the admin.\n" +
+        "🤝 *Add:* /add - Send a friend request to stay in touch.\n" +
+        "👤 *Profile:* /profile - View or edit your interests.\n" +
+        "💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n" +
+        "Need more help? Just message us!"
+    });
+  }
+}
       body: 'Connect anonymously with strangers based on shared interests.\n\n🔒 PRIVACY: We do NOT store your messages, and your identity is hidden until you choose to reveal it.\n\n💬 Have feedback? Use /feedback to tell us what you think!',
       buttons: [
         { id: 'start_onboarding', text: '📝 Create Profile' },
