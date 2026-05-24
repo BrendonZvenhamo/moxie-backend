@@ -229,6 +229,21 @@ async function bootstrap() {
       console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
 
+    // Background Maintenance: Run every minute
+    setInterval(async () => {
+      // 1. Cleanup stale handshakes (2 min timeout)
+      const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
+      for (const userId of endedHandshakes) {
+        await relayService.notifyMatchEnded(userId, 'Match timed out (no confirmation)');
+      }
+
+      // 2. Cleanup inactive matches (20 min timeout)
+      const inactiveMatches = await matchmakingService.cleanupInactiveMatches(20);
+      for (const userId of inactiveMatches) {
+        await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
+      }
+    }, 60000);
+
     // Handle adapters
     const adapters: any[] = [];
     if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'your_telegram_token') {

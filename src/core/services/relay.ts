@@ -34,6 +34,7 @@ export class RelayService {
       if (match) {
         partnerId = match.userIds.find(id => id !== user.id);
         contextId = match.id;
+        await this.matchmaker.updateMatchActivity(match.id);
       }
     } else if ((user as any).activeContactId) {
       partnerId = (user as any).activeContactId;
@@ -143,7 +144,8 @@ export class RelayService {
     const u2 = await this.userService.getUserById(userId2);
 
     if (u1 && u2) {
-      const interestList = interests.join(', ');
+      const hasInterests = interests.length > 0;
+      const interestList = hasInterests ? interests.join(', ') : 'Random Vibes';
       
       const icebreakers = [
         "What's the most recent thing you did related to these interests?",
@@ -159,7 +161,7 @@ export class RelayService {
       const matchMsg = {
         type: 'buttons',
         title: '🎉 MATCH FOUND!',
-        body: `You both like: ${interestList}\n\n💡 *Icebreaker:* ${tip}\n\nClick below within 60 seconds to open the chat!`,
+        body: `${hasInterests ? 'You both like: ' + interestList : '🎲 This is a Random Match!'}\n\n💡 *Icebreaker:* ${tip}\n\nClick below within 60 seconds to open the chat!`,
         buttons: [
           { id: 'ready_confirm', text: '✅ I\'m Ready!' },
           { id: 'stop', text: '🚪 Skip' }

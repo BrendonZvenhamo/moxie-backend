@@ -23,6 +23,8 @@ export interface User {
   normalizedInterests: string[];
   status: UserStatus;
   currentMatchId?: string;
+  activeContactId?: string;
+  isReady: boolean;
   isBanned: boolean;
   trustScore: number;
   acceptMedia: boolean;

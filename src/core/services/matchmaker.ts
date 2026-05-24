@@ -10,9 +10,9 @@ export class MatchmakingService {
    * Attempt to find a match for a user based on shared interests.
    * If a match is found, it creates the match in the DB and updates both users.
    */
-  async findMatch(userId: string): Promise<Match | null> {
+  async findMatch(userId: string, isRandom: boolean = false): Promise<Match | null> {
     const user = await this.userService.getUserById(userId);
-    if (!user || user.normalizedInterests.length === 0) return null;
+    if (!user || (!isRandom && user.normalizedInterests.length === 0)) return null;
 
     return withTransaction(async (client) => {
       // Find another user who is 'searching', not the same user, 
@@ -21,15 +21,17 @@ export class MatchmakingService {
       // and satisfies GENDER PREFERENCES for BOTH parties.
       const findMatchSql = `
         SELECT *, (
-          SELECT count(*) 
-          FROM unnest(normalized_interests) i 
-          WHERE i = ANY($2)
+          CASE WHEN $6 = TRUE THEN 1 ELSE (
+            SELECT count(*) 
+            FROM unnest(normalized_interests) i 
+            WHERE i = ANY($2)
+          ) END
         ) as overlap_count
         FROM users 
         WHERE status = 'searching' 
         AND id != $1 
         AND is_banned = FALSE
-        AND normalized_interests && $2
+        AND ($6 = TRUE OR normalized_interests && $2)
         AND (
           purpose = 'both' OR $3 = 'both' OR purpose = $3
         )
@@ -54,7 +56,8 @@ export class MatchmakingService {
         user.normalizedInterests, 
         user.purpose || 'both',
         user.prefGender || 'both',
-        user.gender || 'other'
+        user.gender || 'other',
+        isRandom
       ]);
 
       if (result.rows.length === 0) {
@@ -157,6 +160,56 @@ export class MatchmakingService {
       await this.userService.updateStatus(user_1_id, UserStatus.IDLE, null);
       await this.userService.updateStatus(user_2_id, UserStatus.IDLE, null);
     }
+  }
+
+  /**
+   * Update the activity timestamp for a match.
+   */
+  async updateMatchActivity(matchId: string): Promise<void> {
+    await query('UPDATE matches SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1', [matchId]);
+  }
+
+  /**
+   * Automatically end matches that have been inactive (no messages) for a certain time.
+   */
+  async cleanupInactiveMatches(minutes: number): Promise<string[]> {
+    const sql = `
+      SELECT id, user_1_id, user_2_id
+      FROM matches
+      WHERE ended_at IS NULL
+      AND last_activity_at < (CURRENT_TIMESTAMP - INTERVAL '${minutes} minutes')
+    `;
+    const result = await query(sql);
+    const endedUserIds: string[] = [];
+
+    for (const row of result.rows) {
+      await this.endMatch(row.id);
+      endedUserIds.push(row.user_1_id, row.user_2_id);
+    }
+    return endedUserIds;
+  }
+
+  /**
+   * Automatically end matches where one or both users failed to click "Ready" in time.
+   */
+  async cleanupPendingHandshakes(timeoutMinutes: number): Promise<string[]> {
+    const sql = `
+      SELECT m.id, m.user_1_id, m.user_2_id
+      FROM matches m
+      JOIN users u1 ON m.user_1_id = u1.id
+      JOIN users u2 ON m.user_2_id = u2.id
+      WHERE m.ended_at IS NULL
+      AND (u1.is_ready = FALSE OR u2.is_ready = FALSE)
+      AND m.started_at < (CURRENT_TIMESTAMP - INTERVAL '${timeoutMinutes} minutes')
+    `;
+    const result = await query(sql);
+    const endedUserIds: string[] = [];
+
+    for (const row of result.rows) {
+      await this.endMatch(row.id);
+      endedUserIds.push(row.user_1_id, row.user_2_id);
+    }
+    return endedUserIds;
   }
 
   /**

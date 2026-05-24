@@ -141,8 +141,6 @@ export class CommandHandler {
         { id: 'view_profile', text: '👤 View Profile' },
         { id: 'start_onboarding', text: '📝 Edit Profile' },
         { id: 'reset_profile', text: '🔄 Reset All' }
-      ],
-      footer: mood.footer
     });
   }
 
@@ -255,6 +253,10 @@ export class CommandHandler {
 
       case 'reset_profile':
         await this.handleResetProfile(user.id, externalId, adapter);
+        break;
+
+      case 'random_match':
+        await this.handleRandomMatch(user.id, externalId, adapter);
         break;
 
       case 'match_now':
@@ -402,14 +404,10 @@ export class CommandHandler {
 
     const waitingCount = await this.userService.getSearchingCount();
     const queueMsg = waitingCount > 0 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
-
-    await adapter.sendMessage(externalId, { 
-      type: 'text', 
-      content: `🔎 Searching for: ${user.interests.join(', ')}...\n\n👥 ${queueMsg}\n\n💡 Use /stop to cancel.` 
+    await adapter.sendMessage(externalId, {
+er for niche interests. Would you like to try a random match?`,      buttons: [
     });
 
-    const match = await this.matchmaker.findMatch(userId);
-    if (match) {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
       // Issue #6: Re-engagement - Notify idle users who might want to match
@@ -417,6 +415,21 @@ export class CommandHandler {
       for (const p of potentials) {
         await this.relayService.notifyPotentialMatch(p.id, p.interests);
       }
+    }
+  }
+
+  private async handleRandomMatch(userId: string, externalId: string, adapter: IPlatformAdapter) {
+    const user = await this.userService.getUserById(userId);
+    if (!user) return;
+
+    await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
+
+    const match = await this.matchmaker.findMatch(userId, true);
+    if (match) {
+      await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+    } else {
+      await this.userService.updateStatus(userId, UserStatus.SEARCHING);
+      await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
     }
   }
 
