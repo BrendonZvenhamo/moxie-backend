@@ -56,7 +56,14 @@ export class CommandHandler {
       return true;
     }
 
-    if (!text.startsWith('/')) return false;
+    if (!text.startsWith('/')) {
+      // If user is idle or searching (not in a match), show menu on any random text to guide them
+      if (user.status !== UserStatus.MATCHED) {
+        await this.showMainMenu(msg.externalId, adapter);
+        return true;
+      }
+      return false;
+    }
 
     const [command, ...args] = text.split(' ');
 
@@ -497,10 +504,14 @@ export class CommandHandler {
     if (activeMatch) {
       const partnerId = activeMatch.userIds.find(id => id !== userId);
       await this.matchmaker.endMatch(activeMatch.id);
+      await adapter.sendMessage(externalId, { type: 'text', content: '🛑 Chat ended.' });
       await this.showMainMenu(externalId, adapter);
       if (partnerId) await this.relayService.notifyMatchEnded(partnerId, 'Stranger left');
     } else {
+      const user = await this.userService.getUserById(userId);
+      const wasSearching = user?.status === UserStatus.SEARCHING;
       await this.userService.updateStatus(userId, UserStatus.IDLE, null, null);
+      await adapter.sendMessage(externalId, { type: 'text', content: wasSearching ? '🛑 Search stopped.' : '🛑 Returned to menu.' });
       await this.showMainMenu(externalId, adapter);
     }
   }
