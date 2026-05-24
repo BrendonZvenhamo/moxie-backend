@@ -35,8 +35,8 @@ export class RelayService {
         partnerId = match.userIds.find(id => id !== user.id);
         contextId = match.id;
       }
-    } else if (user.activeContactId) {
-      partnerId = user.activeContactId;
+    } else if ((user as any).activeContactId) {
+      partnerId = (user as any).activeContactId;
       contextId = `private_${user.id}_${partnerId}`;
     }
 
@@ -45,7 +45,7 @@ export class RelayService {
     // Issue #5: Block relaying if in a stranger match but not both ready
     if (user.currentMatchId) {
       const partner = await this.userService.getUserById(partnerId);
-      if (partner && (!user.isReady || !partner.isReady)) {
+      if (partner && (!(user as any).isReady || !(partner as any).isReady)) {
         const sourceAdapter = this.adapters.get(sourcePlatform);
         if (sourceAdapter) {
           await sourceAdapter.sendMessage(user.externalId, { type: 'text', content: '⏳ Waiting for both users to click "I\'m Ready" before opening the chat.' });

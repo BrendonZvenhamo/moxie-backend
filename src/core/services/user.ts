@@ -326,7 +326,7 @@ export class UserService {
       contactIds: [],
       pendingContactIds: [],
       createdAt: row.created_at,
-    };
+    } as any;
   }
 
   /**

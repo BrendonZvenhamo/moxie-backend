@@ -95,6 +95,7 @@ export class MatchmakingService {
         id: match.id,
         userIds: [match.user_1_id, match.user_2_id],
         startedAt: match.started_at,
+        lastActivityAt: match.last_activity_at,
         interests: match.shared_interests,
       };
     });
@@ -176,6 +177,7 @@ export class MatchmakingService {
       id: m.id,
       userIds: [m.user_1_id, m.user_2_id],
       startedAt: m.started_at,
+      lastActivityAt: m.last_activity_at,
       interests: m.shared_interests,
     };
   }

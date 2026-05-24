@@ -447,7 +447,7 @@ export class CommandHandler {
     const partner = partnerId ? await this.userService.getUserById(partnerId) : null;
 
     if (partner) {
-      if (partner.isReady) {
+      if ((partner as any).isReady) {
         const startMsg = "🚀 *CONNECTED!* You can now send messages. Have fun!\n\n🤝 /add | 🛡️ /block | 🚪 /stop";
         await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
         
