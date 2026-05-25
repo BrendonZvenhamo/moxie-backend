@@ -235,21 +235,21 @@ async function bootstrap() {
 
   // B. STATIC ROUTES (Defined BEFORE listen)
   app.get('/health', (req, res) => res.status(200).send('OK'));
-  
-  app.get('/version', (req, res) => res.send('Moxie v1.1.7 Online'));
-  
+  app.get('/version', (req, res) => {
+    res.send('Moxie v1.2.0 Online');
+  });
+
   app.get('/', (req, res) => {
-    console.log('[ROUTE] Root Hit - Sending Dashboard');
     res.send(DASHBOARD_HTML(String(req.query.pw || '')));
   });
-  
+
   app.get('/privacy', (req, res) => {
     res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
   });
 
   // C. START LISTENING
   const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 MOXIE SERVER v1.1.8 LISTENING ON PORT ${port}`);
+    console.log(`🚀 MOXIE SERVER v1.2.0 LISTENING ON PORT ${port}`);
   });
 
   console.log('--- MOXIE BOOTSTRAP INITIALIZED ---');
@@ -307,12 +307,38 @@ async function bootstrap() {
       }
     });
 
-    // Background Maintenance (DISABLED TEMPORARILY FOR DEBUGGING)
-    /*
+    // Background Maintenance: Run every 60 seconds
     setInterval(async () => {
-      ...
+      try {
+        // 1. Cleanup stale handshakes (2 min timeout)
+        const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
+        for (const userId of endedHandshakes) {
+          await relayService.notifyMatchEnded(userId, 'Match timed out (no confirmation)');
+        }
+
+        // 2. Cleanup inactive matches (20 min timeout)
+        const inactiveMatches = await matchmakingService.cleanupInactiveMatches(20);
+        for (const userId of inactiveMatches) {
+          await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
+        }
+
+        // 3. Periodic Match Re-check (limited batch for stability)
+        const batch = await userService.getSearchingUsers(5);
+        
+        for (const s of batch) {
+          // If waiting for more than 3 minutes, automatically try a random match
+          const waitTime = Date.now() - new Date(s.lastMatchAttemptAt || s.createdAt).getTime();
+          const shouldRandomize = waitTime > 3 * 60000;
+
+          const match = await matchmakingService.findMatch(s.id, shouldRandomize, s);
+          if (match) {
+            await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+          }
+        }
+      } catch (e) {
+        console.error('Background maintenance error:', e);
+      }
     }, 60000);
-    */
 
     // Handle adapters
     const adapters: any[] = [];
