@@ -223,19 +223,38 @@ const DASHBOARD_HTML = (password: string) => {
 async function bootstrap() {
   const app = express();
   const port = Number(process.env.PORT) || 3000;
-  app.use(bodyParser.json({ limit: '50mb' }));
 
-  // 1. START LISTENING IMMEDIATELY (Render Requirement)
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 HTTP Server online at 0.0.0.0:${port} (v1.1.5)`);
+  // A. HIGH-VISIBILITY LOGGER (First Priority)
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log(`[INCOMING] ${new Date().toISOString()} | ${req.method} ${req.url} | IP: ${req.ip}`);
+    next();
   });
 
-  // 2. BASIC ROUTES (Highest Priority)
-  app.get('/health', (req, res) => res.status(200).send('OK'));
-  app.get('/version', (req, res) => res.send('Moxie v1.1.5 Online'));
-  app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
+  app.use(bodyParser.json({ limit: '50mb' }));
+
+  // B. STATIC ROUTES (Defined BEFORE listen)
+  app.get('/health', (req, res) => {
+    console.log('[ROUTE] /health hit');
+    res.status(200).send('OK');
+  });
+  
+  app.get('/version', (req, res) => {
+    console.log('[ROUTE] /version hit');
+    res.send('Moxie v1.1.6 Online');
+  });
+  
+  app.get('/', (req, res) => {
+    console.log('[ROUTE] / (Root) hit');
+    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
+  });
+  
   app.get('/privacy', (req, res) => {
     res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
+  });
+
+  // C. START LISTENING
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 MOXIE SERVER v1.1.6 LISTENING ON PORT ${port}`);
   });
 
   console.log('--- MOXIE BOOTSTRAP INITIALIZED ---');
