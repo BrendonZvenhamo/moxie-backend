@@ -238,9 +238,12 @@ async function bootstrap() {
     const port = Number(process.env.PORT) || 3000;
     app.use(bodyParser.json({ limit: '50mb' }));
 
-    // BIND TO PORT IMMEDIATELY to avoid Render timeout
-    const server = app.listen(port, '0.0.0.0', () => {
-      console.log('HTTP Server is listening on 0.0.0.0:' + port);
+    // Basic Request Logger
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (!req.url.includes('webhooks')) {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      }
+      next();
     });
 
     // Public routes
@@ -250,6 +253,11 @@ async function bootstrap() {
     
     app.get('/privacy', (req, res) => {
       res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
+    });
+
+    // BIND TO PORT
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
     
     const verifyDashboardAuth = (req: Request): boolean => {
