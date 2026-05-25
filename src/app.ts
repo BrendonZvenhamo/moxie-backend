@@ -239,8 +239,8 @@ async function bootstrap() {
   app.get('/version', (req, res) => res.send('Moxie v1.1.7 Online'));
   
   app.get('/', (req, res) => {
-    console.log('[ROUTE] Root Hit - Sending Test Page');
-    res.send('<h1>Moxie is Online!</h1><p>If you see this, the code is working perfectly. Check your dashboard password in environment variables.</p>');
+    console.log('[ROUTE] Root Hit - Sending Dashboard');
+    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
   });
   
   app.get('/privacy', (req, res) => {
@@ -249,7 +249,7 @@ async function bootstrap() {
 
   // C. START LISTENING
   const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 MOXIE SERVER v1.1.6 LISTENING ON PORT ${port}`);
+    console.log(`🚀 MOXIE SERVER v1.1.8 LISTENING ON PORT ${port}`);
   });
 
   console.log('--- MOXIE BOOTSTRAP INITIALIZED ---');
@@ -265,14 +265,6 @@ async function bootstrap() {
     const commandHandler = new CommandHandler(userService, matchmakingService, relayService);
     const dashboardService = new DashboardService();
     const rateLimiter = new RateLimiter();
-
-    // Basic Request Logger
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      if (!req.url.includes('webhooks')) {
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-      }
-      next();
-    });
     
     const verifyDashboardAuth = (req: Request): boolean => {
       const password = (process.env.DASHBOARD_PASSWORD || '').trim();
@@ -315,34 +307,12 @@ async function bootstrap() {
       }
     });
 
-    // Background Maintenance: Run every 60 seconds
+    // Background Maintenance (DISABLED TEMPORARILY FOR DEBUGGING)
+    /*
     setInterval(async () => {
-      // 1. Cleanup stale handshakes (2 min timeout)
-      const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
-      for (const userId of endedHandshakes) {
-        await relayService.notifyMatchEnded(userId, 'Match timed out (no confirmation)');
-      }
-
-      // 2. Cleanup inactive matches (20 min timeout)
-      const inactiveMatches = await matchmakingService.cleanupInactiveMatches(20);
-      for (const userId of inactiveMatches) {
-        await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
-      }
-
-      // 3. Periodic Match Re-check (limited batch for stability)
-      const batch = await userService.getSearchingUsers(5);
-      
-      for (const s of batch) {
-        // If waiting for more than 3 minutes, automatically try a random match
-        const waitTime = Date.now() - new Date(s.lastMatchAttemptAt || s.createdAt).getTime();
-        const shouldRandomize = waitTime > 3 * 60000;
-
-        const match = await matchmakingService.findMatch(s.id, shouldRandomize, s);
-        if (match) {
-          await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
-        }
-      }
+      ...
     }, 60000);
+    */
 
     // Handle adapters
     const adapters: any[] = [];
