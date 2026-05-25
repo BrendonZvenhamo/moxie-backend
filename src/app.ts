@@ -221,7 +221,7 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.2) ---');
+  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.4) ---');
   
   // 1. Sync Database first
   await syncDatabase();
@@ -238,9 +238,14 @@ async function bootstrap() {
     const port = Number(process.env.PORT) || 3000;
     app.use(bodyParser.json({ limit: '50mb' }));
 
+    // BIND TO PORT IMMEDIATELY to avoid Render timeout
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log('HTTP Server is listening on 0.0.0.0:' + port);
+    });
+
     // Public routes
     app.get('/health', (req, res) => res.status(200).send('OK'));
-    app.get('/version', (req, res) => res.send('Moxie v1.1.2 Online'));
+    app.get('/version', (req, res) => res.send('Moxie v1.1.4 Online'));
     app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
     
     app.get('/privacy', (req, res) => {
@@ -286,11 +291,6 @@ async function bootstrap() {
       } else {
         res.status(400).json({ error: 'Broadcast failed' });
       }
-    });
-
-    // BIND TO PORT IMMEDIATELY
-    app.listen(port, '0.0.0.0', () => {
-      console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
 
     // Background Maintenance: Run every 60 seconds
