@@ -221,12 +221,30 @@ const DASHBOARD_HTML = (password: string) => {
 };
 
 async function bootstrap() {
-  console.log('--- MOXIE BOOTSTRAP STARTING (v1.1.4) ---');
-  
-  // 1. Sync Database first
-  await syncDatabase();
+  const app = express();
+  const port = Number(process.env.PORT) || 3000;
+  app.use(bodyParser.json({ limit: '50mb' }));
 
+  // 1. START LISTENING IMMEDIATELY (Render Requirement)
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 HTTP Server online at 0.0.0.0:${port} (v1.1.5)`);
+  });
+
+  // 2. BASIC ROUTES (Highest Priority)
+  app.get('/health', (req, res) => res.status(200).send('OK'));
+  app.get('/version', (req, res) => res.send('Moxie v1.1.5 Online'));
+  app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
+  app.get('/privacy', (req, res) => {
+    res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
+  });
+
+  console.log('--- MOXIE BOOTSTRAP INITIALIZED ---');
+  
   try {
+    // 3. DATABASE SYNC (Async)
+    console.log('Starting background initialization...');
+    await syncDatabase();
+
     const userService = new UserService();
     const matchmakingService = new MatchmakingService(userService);
     const relayService = new RelayService(userService, matchmakingService);
@@ -234,30 +252,12 @@ async function bootstrap() {
     const dashboardService = new DashboardService();
     const rateLimiter = new RateLimiter();
 
-    const app = express();
-    const port = Number(process.env.PORT) || 3000;
-    app.use(bodyParser.json({ limit: '50mb' }));
-
     // Basic Request Logger
     app.use((req: Request, res: Response, next: NextFunction) => {
       if (!req.url.includes('webhooks')) {
         console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
       }
       next();
-    });
-
-    // Public routes
-    app.get('/health', (req, res) => res.status(200).send('OK'));
-    app.get('/version', (req, res) => res.send('Moxie v1.1.4 Online'));
-    app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
-    
-    app.get('/privacy', (req, res) => {
-      res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
-    });
-
-    // BIND TO PORT
-    const server = app.listen(port, '0.0.0.0', () => {
-      console.log('HTTP Server is listening on 0.0.0.0:' + port);
     });
     
     const verifyDashboardAuth = (req: Request): boolean => {
