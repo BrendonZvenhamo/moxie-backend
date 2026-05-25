@@ -56,7 +56,13 @@ export class MatchmakingService {
         ORDER BY 
           (CASE WHEN mood = $7 AND $7 != 'None' THEN 3 ELSE 0 END) + 
           (CASE WHEN mood != 'None' THEN 1 ELSE 0 END) + 
-          overlap_count DESC, 
+          (
+            CASE WHEN $6 = TRUE THEN 1 ELSE (
+              SELECT count(*) 
+              FROM unnest(normalized_interests) i 
+              WHERE i = ANY($2)
+            ) END
+          ) DESC, 
           ABS(trust_score - $8) ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED;
