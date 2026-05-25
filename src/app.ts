@@ -226,26 +226,21 @@ async function bootstrap() {
 
   // A. HIGH-VISIBILITY LOGGER (First Priority)
   app.use((req: Request, res: Response, next: NextFunction) => {
-    console.log(`[INCOMING] ${new Date().toISOString()} | ${req.method} ${req.url} | IP: ${req.ip}`);
+    const forward = req.headers['x-forwarded-for'] || 'no-proxy';
+    console.log(`[INCOMING] ${req.method} ${req.url} | RealIP: ${forward} | LocalIP: ${req.ip}`);
     next();
   });
 
   app.use(bodyParser.json({ limit: '50mb' }));
 
   // B. STATIC ROUTES (Defined BEFORE listen)
-  app.get('/health', (req, res) => {
-    console.log('[ROUTE] /health hit');
-    res.status(200).send('OK');
-  });
+  app.get('/health', (req, res) => res.status(200).send('OK'));
   
-  app.get('/version', (req, res) => {
-    console.log('[ROUTE] /version hit');
-    res.send('Moxie v1.1.6 Online');
-  });
+  app.get('/version', (req, res) => res.send('Moxie v1.1.7 Online'));
   
   app.get('/', (req, res) => {
-    console.log('[ROUTE] / (Root) hit');
-    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
+    console.log('[ROUTE] Root Hit - Sending Test Page');
+    res.send('<h1>Moxie is Online!</h1><p>If you see this, the code is working perfectly. Check your dashboard password in environment variables.</p>');
   });
   
   app.get('/privacy', (req, res) => {
