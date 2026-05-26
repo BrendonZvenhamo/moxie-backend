@@ -66,7 +66,11 @@ export class DashboardService {
       // Matches
       try {
         let matchesSql = `
-          SELECT m.*, u1.username as user1, u1.external_id as phone1, u2.username as user2, u2.external_id as phone2
+          SELECT m.*, u1.username as user1, u1.external_id as phone1, u2.username as user2, u2.external_id as phone2,
+                 CASE 
+                   WHEN m.ended_at IS NOT NULL THEN EXTRACT(EPOCH FROM (m.ended_at - m.started_at))
+                   ELSE EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - m.started_at))
+                 END as duration_seconds
           FROM matches m
           JOIN users u1 ON m.user_1_id = u1.id
           JOIN users u2 ON m.user_2_id = u2.id
