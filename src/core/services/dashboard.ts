@@ -15,7 +15,7 @@ export interface DashboardStats {
 }
 
 export class DashboardService {
-  async getStats(): Promise<DashboardStats> {
+  async getStats(date?: string): Promise<DashboardStats> {
     const stats: any = {
       totalUsers: 0,
       searchingUsers: 0,
@@ -49,14 +49,22 @@ export class DashboardService {
 
       // Matches
       try {
-        const rmResult = await query(`
+        let matchesSql = `
           SELECT m.*, u1.username as user1, u2.username as user2 
           FROM matches m
           JOIN users u1 ON m.user_1_id = u1.id
           JOIN users u2 ON m.user_2_id = u2.id
-          ORDER BY m.started_at DESC
-          LIMIT 5
-        `);
+        `;
+        const params: any[] = [];
+        
+        if (date) {
+          matchesSql += ` WHERE m.started_at::date = $1::date ORDER BY m.started_at DESC`;
+          params.push(date);
+        } else {
+          matchesSql += ` ORDER BY m.started_at DESC LIMIT 10`;
+        }
+
+        const rmResult = await query(matchesSql, params);
         stats.recentMatches = rmResult.rows.map(m => ({
           ...m,
           user1: m.user1 || 'Anon',

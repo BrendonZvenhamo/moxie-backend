@@ -125,7 +125,13 @@ const DASHBOARD_HTML = (password: string) => {
     '        <div class="card"><h3>Matched</h3><div class="value" id="matchedUsers">...</div></div>',
     '      </div>',
     '      <div class="section">',
-    '        <h2>Recent Matches</h2>',
+    '        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #ebedf0; padding-bottom: 10px; margin-bottom: 15px;">',
+    '          <h2 style="margin:0; border:none; padding:0;">Matches</h2>',
+    '          <div style="display:flex; gap:10px; align-items:center;">',
+    '            <input type="date" id="date-filter" style="margin:0; padding:4px 8px; font-size:14px; width:auto;">',
+    '            <button class="refresh-btn" id="clear-filter" style="padding:4px 12px; background:#65676b;">Clear</button>',
+    '          </div>',
+    '        </div>',
     '        <table>',
     '          <thead><tr><th>Started</th><th>User 1</th><th>User 2</th><th>Interests</th></tr></thead>',
     '          <tbody id="recentMatches"></tbody>',
@@ -139,15 +145,19 @@ const DASHBOARD_HTML = (password: string) => {
     '    (function() {',
     '      var urlPw = ' + JSON.stringify(password) + ';',
     '      var storageKey = "moxie_admin_pw";',
-    '      async function loadStats(inputPw) {',
+    '      var currentDateFilter = "";',
+    '      async function loadStats(inputPw, date) {',
     '        var checkPw = inputPw || urlPw || sessionStorage.getItem(storageKey);',
     '        if (!checkPw) {',
     '          document.getElementById("login-screen").style.display = "block";',
     '          document.getElementById("main-content").style.display = "none";',
     '          return;',
     '        }',
+    '        if (date !== undefined) currentDateFilter = date;',
     '        try {',
-    '          var res = await fetch("/api/stats?pw=" + encodeURIComponent(checkPw));',
+    '          var url = "/api/stats?pw=" + encodeURIComponent(checkPw);',
+    '          if (currentDateFilter) url += "&date=" + currentDateFilter;',
+    '          var res = await fetch(url);',
     '          if (!res.ok) {',
     '            sessionStorage.removeItem(storageKey);',
     '            document.getElementById("login-screen").style.display = "block";',
@@ -169,7 +179,7 @@ const DASHBOARD_HTML = (password: string) => {
     '              "<td>" + (m.user2 || "Anon") + "</td>" +',
     '              "<td><small>" + (m.shared_interests || []).join(", ") + "</small></td></tr>";',
     '          }).join("");',
-    '          document.getElementById("recentMatches").innerHTML = recentMatchesHtml || "<tr><td colspan=\'4\'>No recent matches</td></tr>";',
+    '          document.getElementById("recentMatches").innerHTML = recentMatchesHtml || "<tr><td colspan=\'4\'>No matches found for this period</td></tr>";',
     '          var feedbackHtml = data.feedbacks.map(function(f) {',
     '            return "<div style=\'padding: 10px; border-bottom: 1px solid #f0f2f5;\'>" +',
     '              "<strong>" + (f.username || "Anon") + "</strong> <small style=\'color: #65676b;\'>" + new Date(f.created_at).toLocaleString() + "</small>" +',
@@ -189,6 +199,13 @@ const DASHBOARD_HTML = (password: string) => {
     '      };',
     '      document.getElementById("refresh-btn").onclick = function() {',
     '        loadStats();',
+    '      };',
+    '      document.getElementById("date-filter").onchange = function(e) {',
+    '        loadStats(null, e.target.value);',
+    '      };',
+    '      document.getElementById("clear-filter").onclick = function() {',
+    '        document.getElementById("date-filter").value = "";',
+    '        loadStats(null, "");',
     '      };',
     '      document.getElementById("broadcast-btn").onclick = async function() {',
     '        var message = prompt("Enter message to broadcast to all users:");',
@@ -286,7 +303,8 @@ async function bootstrap() {
         console.warn('Unauthorized access attempt to /api/stats');
         return res.status(401).json({ error: 'Unauthorized' });
       }
-      res.json(await dashboardService.getStats());
+      const date = typeof req.query.date === 'string' ? req.query.date : undefined;
+      res.json(await dashboardService.getStats(date));
     });
 
     // API Reset
