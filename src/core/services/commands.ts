@@ -246,10 +246,27 @@ export class CommandHandler {
       case 'gender_other':
         const gender = buttonId.split('_')[1];
         await this.userService.updateGender(user.id, gender);
+        await this.userService.updateOnboardingStep(user.id, 'age');
+        await adapter.sendMessage(externalId, {
+          type: 'text',
+          content: '🎂 What is your age? (Please reply with just the number, e.g., 25)'
+        });
+        break;
+
+      case 'pref_age_18_24':
+      case 'pref_age_25_34':
+      case 'pref_age_35_plus':
+      case 'pref_age_any':
+        let min = 18, max = 99;
+        if (buttonId === 'pref_age_18_24') { max = 24; }
+        else if (buttonId === 'pref_age_25_34') { min = 25; max = 34; }
+        else if (buttonId === 'pref_age_35_plus') { min = 35; }
+        
+        await this.userService.updatePrefAge(user.id, min, max);
         await this.userService.updateOnboardingStep(user.id, 'pref_gender');
         await adapter.sendMessage(externalId, {
           type: 'buttons',
-          title: '🎯 STEP 4: PREFERENCE',
+          title: '🎯 STEP 6: GENDER PREFERENCE',
           body: 'Who would you like to talk to?',
           buttons: [
             { id: 'pref_male', text: '👨 Men' },
@@ -298,13 +315,19 @@ export class CommandHandler {
 
       case 'view_profile':
         const prefText = user.prefGender === 'male' ? 'Men 👨' : (user.prefGender === 'female' ? 'Women 👩' : 'Anyone 🌟');
+        const agePrefText = `${user.prefAgeMin}-${user.prefAgeMax}`;
         const interestsStr = user.interests.join(', ') || 'None';
         const userRank = getTrustRank(user.trustScore);
         await adapter.sendMessage(externalId, {
           type: 'text',
           content: "👤 *Your Profile*\n\n" +
             "Rank: " + userRank.emoji + " " + userRank.name + " (" + user.trustScore + ")\n" +
-            "Username: " + user.username + "\nGender: " + (user.gender || 'Not set') + "\nInterested in: " + prefText + "\nVibe: " + (user.mood || 'None') + "\nInterests: " + interestsStr
+            "Username: " + user.username + "\n" +
+            "Age: " + (user.age || 'Not set') + "\n" +
+            "Gender: " + (user.gender || 'Not set') + "\n" +
+            "Interested in: " + prefText + " (Ages: " + agePrefText + ")\n" +
+            "Vibe: " + (user.mood || 'None') + "\n" +
+            "Interests: " + interestsStr
         });
         await this.showMainMenu(externalId, adapter);
         break;
@@ -398,6 +421,43 @@ export class CommandHandler {
           { id: 'gender_male', text: '👨 Male' },
           { id: 'gender_female', text: '👩 Female' },
           { id: 'gender_other', text: '🌈 Other' }
+        ]
+      });
+      return true;
+    }
+
+    if (step === 'age') {
+      const age = parseInt(text);
+      if (isNaN(age) || age < 18 || age > 99) {
+        await adapter.sendMessage(externalId, { type: 'text', content: '⚠️ Please enter a valid age (18-99).' });
+      } else {
+        await this.userService.updateAge(user.id, age);
+        await this.userService.updateOnboardingStep(user.id, 'pref_age');
+        await adapter.sendMessage(externalId, {
+          type: 'buttons',
+          title: '🎯 STEP 5: AGE PREFERENCE',
+          body: 'Who would you like to talk to?',
+          buttons: [
+            { id: 'pref_age_18_24', text: '🐣 18-24' },
+            { id: 'pref_age_25_34', text: '🦉 25-34' },
+            { id: 'pref_age_35_plus', text: '🐘 35+' },
+            { id: 'pref_age_any', text: '🌟 Any age' }
+          ]
+        });
+      }
+      return true;
+    }
+
+    if (step === 'pref_age') {
+      await adapter.sendMessage(externalId, {
+        type: 'buttons',
+        title: '🎯 STEP 5: AGE PREFERENCE',
+        body: 'Please select an age range:',
+        buttons: [
+          { id: 'pref_age_18_24', text: '🐣 18-24' },
+          { id: 'pref_age_25_34', text: '🦉 25-34' },
+          { id: 'pref_age_35_plus', text: '🐘 35+' },
+          { id: 'pref_age_any', text: '🌟 Any age' }
         ]
       });
       return true;

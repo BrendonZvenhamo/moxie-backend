@@ -172,6 +172,20 @@ export class UserService {
   }
 
   /**
+   * Update a user's age.
+   */
+  async updateAge(userId: string, age: number): Promise<void> {
+    await query('UPDATE users SET age = $1 WHERE id = $2', [age, userId]);
+  }
+
+  /**
+   * Update a user's age preference.
+   */
+  async updatePrefAge(userId: string, min: number, max: number): Promise<void> {
+    await query('UPDATE users SET pref_age_min = $1, pref_age_max = $2 WHERE id = $3', [min, max, userId]);
+  }
+
+  /**
    * Update a user's gender.
    */
   async updateGender(userId: string, gender: string): Promise<void> {
@@ -344,6 +358,9 @@ export class UserService {
       bio: row.bio,
       gender: row.gender,
       prefGender: row.pref_gender,
+      age: row.age,
+      prefAgeMin: row.pref_age_min,
+      prefAgeMax: row.pref_age_max,
       purpose: row.purpose,
       mood: row.mood,
       onboardingStep: row.onboarding_step || 'start',

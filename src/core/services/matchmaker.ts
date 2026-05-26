@@ -49,6 +49,9 @@ export class MatchmakingService {
         AND (
           pref_gender = 'both' OR pref_gender = $5
         )
+        -- Mutual Age Filtering
+        AND (age >= $9 AND age <= $10) -- Their age matches my pref
+        AND ($11 >= pref_age_min AND $11 <= pref_age_max) -- My age matches their pref
         -- Feature #5: Prioritize same Mood/Vibe
         AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = $1)
         AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = $1)
@@ -76,7 +79,10 @@ export class MatchmakingService {
         user.gender || 'other',
         isRandom,
         user.mood || '',
-        user.trustScore || 100
+        user.trustScore || 100,
+        user.prefAgeMin || 18,
+        user.prefAgeMax || 99,
+        user.age || 18
       ]);
 
       if (result.rows.length === 0) {
