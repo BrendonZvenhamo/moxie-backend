@@ -226,19 +226,45 @@ export class CommandHandler {
       case 'interest_art':
       case 'interest_reading':
       case 'interest_finance':
-        const interest = buttonId.split('_')[1];
-        await this.userService.updateInterests(user.id, [interest]);
-        await this.userService.updateOnboardingStep(user.id, 'gender');
+        const newInterest = buttonId.split('_')[1];
+        const currentInterests = user.interests || [];
+        if (!currentInterests.includes(newInterest)) {
+          currentInterests.push(newInterest);
+          await this.userService.updateInterests(user.id, currentInterests);
+        }
+        // Re-show selection with "Done" button
         await adapter.sendMessage(externalId, {
           type: 'buttons',
-          title: '⚧ STEP 3: GENDER',
-          body: 'Almost done! Your gender?',
+          title: '🎯 SELECT INTERESTS',
+          body: `Selected: ${currentInterests.join(', ')}\n\nPick more or click Done!`,
           buttons: [
-            { id: 'gender_male', text: '👨 Male' },
-            { id: 'gender_female', text: '👩 Female' },
-            { id: 'gender_other', text: '🌈 Other' }
+            { id: 'interest_done', text: '✅ DONE' },
+            { id: 'interest_gaming', text: '🎮 Gaming' },
+            { id: 'interest_music', text: '🎵 Music' },
+            { id: 'interest_sports', text: '⚽ Sports' },
+            { id: 'interest_tech', text: '💻 Tech' },
+            { id: 'interest_movies', text: '🎬 Movies' }
           ]
         });
+        break;
+
+      case 'interest_done':
+        if ((user.interests || []).length === 0) {
+          await adapter.sendMessage(externalId, { type: 'text', content: 'Please select at least one interest!' });
+          await this.showInterestSelection(externalId, adapter);
+        } else {
+          await this.userService.updateOnboardingStep(user.id, 'gender');
+          await adapter.sendMessage(externalId, {
+            type: 'buttons',
+            title: '⚧ STEP 3: GENDER',
+            body: 'Almost done! Your gender?',
+            buttons: [
+              { id: 'gender_male', text: '👨 Male' },
+              { id: 'gender_female', text: '👩 Female' },
+              { id: 'gender_other', text: '🌈 Other' }
+            ]
+          });
+        }
         break;
 
       case 'gender_male':
