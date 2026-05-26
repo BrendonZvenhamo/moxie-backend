@@ -21,6 +21,12 @@ export class MatchmakingService {
     }
 
     return withTransaction(async (client) => {
+      // CRITICAL FIX: Lock the current user to prevent them being snatched by another matchmaker process
+      const lockResult = await client.query("SELECT status FROM users WHERE id = $1 FOR UPDATE", [userId]);
+      if (lockResult.rows.length === 0 || lockResult.rows[0].status !== UserStatus.SEARCHING) {
+        return null;
+      }
+
       // Find another user who is 'searching', not the same user, 
       // has at least one overlapping NORMALIZED interest,
       // has a compatible purpose, is NOT banned,
