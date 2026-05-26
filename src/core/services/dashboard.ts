@@ -50,7 +50,7 @@ export class DashboardService {
       // Matches
       try {
         let matchesSql = `
-          SELECT m.*, u1.username as user1, u2.username as user2 
+          SELECT m.*, u1.username as user1, u1.external_id as phone1, u2.username as user2, u2.external_id as phone2
           FROM matches m
           JOIN users u1 ON m.user_1_id = u1.id
           JOIN users u2 ON m.user_2_id = u2.id
@@ -68,7 +68,9 @@ export class DashboardService {
         stats.recentMatches = rmResult.rows.map(m => ({
           ...m,
           user1: m.user1 || 'Anon',
-          user2: m.user2 || 'Anon'
+          phone1: m.phone1,
+          user2: m.user2 || 'Anon',
+          phone2: m.phone2
         }));
       } catch (e) { console.error('Dashboard: matches table query failed'); }
 
