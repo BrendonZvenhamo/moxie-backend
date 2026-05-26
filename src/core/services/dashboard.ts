@@ -9,6 +9,10 @@ export interface DashboardStats {
     whatsapp: number;
   };
   activeMatches: number;
+  genderStats: {
+    total: Record<string, number>;
+    online: Record<string, number>;
+  };
   recentMatches: any[];
   feedbacks: any[];
   reports: any[];
@@ -23,6 +27,7 @@ export class DashboardService {
       idleUsers: 0,
       platformStats: { whatsapp: 0 },
       activeMatches: 0,
+      genderStats: { total: {}, online: {} },
       recentMatches: [],
       feedbacks: [],
       reports: []
@@ -46,6 +51,17 @@ export class DashboardService {
       
       const amResult = await query("SELECT count(*) FROM matches WHERE ended_at IS NULL");
       stats.activeMatches = parseInt(amResult.rows[0].count);
+
+      // Gender Stats
+      const gTotalResult = await query("SELECT COALESCE(gender, 'unset') as gender, count(*) FROM users GROUP BY gender");
+      gTotalResult.rows.forEach(r => {
+        stats.genderStats.total[r.gender] = parseInt(r.count);
+      });
+
+      const gOnlineResult = await query("SELECT COALESCE(gender, 'unset') as gender, count(*) FROM users WHERE status IN ('searching', 'matched') GROUP BY gender");
+      gOnlineResult.rows.forEach(r => {
+        stats.genderStats.online[r.gender] = parseInt(r.count);
+      });
 
       // Matches
       try {
