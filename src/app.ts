@@ -214,9 +214,7 @@ const DASHBOARD_HTML = (password: string) => {
     '          });',
     '          document.getElementById("gender-poll").innerHTML = pollHtml;',
     '          document.getElementById("gender-legend").innerHTML = legendHtml;',
-
-    var recentMatchesHtml = data.recentMatches.map(function(m) {
-
+    '          var recentMatchesHtml = data.recentMatches.map(function(m) {',
     '            return "<tr><td>" + new Date(m.started_at).toLocaleString() + "</td>" +',
     '              "<td><div class=\'user-info\'><span>" + (m.user1 || "Anon") + "</span><small>" + (m.phone1 || "") + "</small></div></td>" +',
     '              "<td><div class=\'user-info\'><span>" + (m.user2 || "Anon") + "</span><small>" + (m.phone2 || "") + "</small></div></td>" +',
