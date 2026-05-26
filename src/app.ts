@@ -183,13 +183,12 @@ const DASHBOARD_HTML = (password: string) => {
     '          document.getElementById("activeMatches").textContent = data.activeMatches;',
     '          document.getElementById("searchingUsers").textContent = data.searchingUsers;',
     '          document.getElementById("matchedUsers").textContent = data.matchedUsers;',
-    var recentMatchesHtml = data.recentMatches.map(function(m) {
-      return "<tr><td>" + new Date(m.started_at).toLocaleString() + "</td>" +
-        "<td><div class='user-info'><span>" + (m.user1 || "Anon") + "</span><small>" + (m.phone1 || "") + "</small></div></td>" +
-        "<td><div class='user-info'><span>" + (m.user2 || "Anon") + "</span><small>" + (m.phone2 || "") + "</small></div></td>" +
-        "<td><small>" + (m.shared_interests || []).join(", ") + "</small></td></tr>";
-    }).join("");
-
+    '          var recentMatchesHtml = data.recentMatches.map(function(m) {',
+    '            return "<tr><td>" + new Date(m.started_at).toLocaleString() + "</td>" +',
+    '              "<td><div class=\'user-info\'><span>" + (m.user1 || "Anon") + "</span><small>" + (m.phone1 || "") + "</small></div></td>" +',
+    '              "<td><div class=\'user-info\'><span>" + (m.user2 || "Anon") + "</span><small>" + (m.phone2 || "") + "</small></div></td>" +',
+    '              "<td><small>" + (m.shared_interests || []).join(", ") + "</small></td></tr>";',
+    '          }).join("");',
     '          document.getElementById("recentMatches").innerHTML = recentMatchesHtml || "<tr><td colspan=\'4\'>No matches found for this period</td></tr>";',
     '          var feedbackHtml = data.feedbacks.map(function(f) {',
     '            return "<div style=\'padding: 10px; border-bottom: 1px solid #f0f2f5;\'>" +',
