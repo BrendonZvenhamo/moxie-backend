@@ -128,7 +128,8 @@ export class UserService {
     let activeSql = "SELECT count(*) FROM users WHERE last_activity_at > (CURRENT_TIMESTAMP - INTERVAL '15 minutes')";
     const activeParams: any[] = [];
     
-    if (gender && gender !== 'both') {
+    // Strict gender filtering for active users
+    if (gender === 'male' || gender === 'female' || gender === 'other') {
       activeSql += " AND gender = $1";
       activeParams.push(gender);
     }

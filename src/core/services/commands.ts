@@ -146,9 +146,23 @@ export class CommandHandler {
     const mood = getMoodDecoration(user.purpose);
     const trending = await this.userService.getTrendingInterests();
     const rank = getTrustRank(user.trustScore);
-    const stats = await this.userService.getGlobalStats(user.prefGender);
+    
+    // Explicitly determine target gender preference from user profile
+    const targetGender = user.prefGender || 'both';
+    
+    // Fetch stats filtered by that specific gender
+    const stats = await this.userService.getGlobalStats(targetGender);
 
-    const prefLabel = user.prefGender === 'male' ? 'Men' : (user.prefGender === 'female' ? 'Women' : 'People');
+    let prefLabel = 'People 🌟';
+    if (targetGender === 'male') {
+      prefLabel = 'Men 👨';
+    } else if (targetGender === 'female') {
+      prefLabel = 'Women 👩';
+    } else if (targetGender === 'other') {
+      prefLabel = 'Others 🌈';
+    } else {
+      prefLabel = 'People 🌟';
+    }
 
     const body = mood.emoji + " Status: " + user.status.toUpperCase() + "\n" +
                  rank.emoji + " Rank: " + rank.name + " (" + user.trustScore + " pts)\n" +
