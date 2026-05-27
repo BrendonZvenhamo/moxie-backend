@@ -563,9 +563,20 @@ export class CommandHandler {
           : "No women are searching right now—I'll notify you the moment one joins!";
       } else {
         // 'both' or unset - includes the current user
-        queueMsg = waitingCount > 1 
-          ? `There are ${waitingCount} people searching right now!` 
-          : "You're the first one here—I'll notify you the moment someone joins!";
+        if (waitingCount > 1) {
+          const maleCount = await this.userService.getSearchingCount('male');
+          const femaleCount = await this.userService.getSearchingCount('female');
+          const otherCount = await this.userService.getSearchingCount('other');
+
+          const parts = [];
+          if (maleCount > 0) parts.push(`${maleCount} ${maleCount === 1 ? 'man' : 'men'}`);
+          if (femaleCount > 0) parts.push(`${femaleCount} ${femaleCount === 1 ? 'woman' : 'women'}`);
+          if (otherCount > 0) parts.push(`${otherCount} ${otherCount === 1 ? 'other' : 'others'}`);
+
+          queueMsg = `There are ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')} searching right now!`;
+        } else {
+          queueMsg = "You're the first one here—I'll notify you the moment someone joins!";
+        }
       }
       
       const interestsStr = user.interests.join(', ') || 'Global';
