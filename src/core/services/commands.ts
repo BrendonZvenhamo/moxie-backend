@@ -146,14 +146,16 @@ export class CommandHandler {
     const mood = getMoodDecoration(user.purpose);
     const trending = await this.userService.getTrendingInterests();
     const rank = getTrustRank(user.trustScore);
-    const stats = await this.userService.getGlobalStats();
+    const stats = await this.userService.getGlobalStats(user.prefGender);
+
+    const prefLabel = user.prefGender === 'male' ? 'Men' : (user.prefGender === 'female' ? 'Women' : 'People');
 
     const body = mood.emoji + " Status: " + user.status.toUpperCase() + "\n" +
                  rank.emoji + " Rank: " + rank.name + " (" + user.trustScore + " pts)\n" +
                  "✨ Vibe: " + (user.mood || 'Not set') + "\n" +
                  mood.accent + " Interests: " + (user.interests.join(', ') || 'None') + "\n\n" +
                  "🔥 *Trending:* " + trending.join(', ') + "\n" +
-                 "🌍 *Community:* " + stats.activeNow + " online | " + stats.matchesToday + " matches today\n\n" +
+                 "🌍 *Community:* " + stats.activeNow + " " + prefLabel + " online | " + stats.matchesToday + " matches today\n\n" +
                  "What would you like to do?";
 
     await adapter.sendMessage(externalId, {

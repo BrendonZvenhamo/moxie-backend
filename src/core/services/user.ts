@@ -124,10 +124,16 @@ export class UserService {
   /**
    * Get global stats for social proof.
    */
-  async getGlobalStats(): Promise<{ activeNow: number, matchesToday: number }> {
-    const activeResult = await query(
-      "SELECT count(*) FROM users WHERE last_activity_at > (CURRENT_TIMESTAMP - INTERVAL '15 minutes')"
-    );
+  async getGlobalStats(gender?: string): Promise<{ activeNow: number, matchesToday: number }> {
+    let activeSql = "SELECT count(*) FROM users WHERE last_activity_at > (CURRENT_TIMESTAMP - INTERVAL '15 minutes')";
+    const activeParams: any[] = [];
+    
+    if (gender && gender !== 'both') {
+      activeSql += " AND gender = $1";
+      activeParams.push(gender);
+    }
+
+    const activeResult = await query(activeSql, activeParams);
     const matchesResult = await query(
       "SELECT count(*) FROM matches WHERE started_at > (CURRENT_TIMESTAMP - INTERVAL '24 hours')"
     );
