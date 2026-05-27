@@ -555,12 +555,12 @@ export class CommandHandler {
       let queueMsg: string;
       if (user.prefGender === 'male') {
         queueMsg = waitingCount > 0 
-          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'man' : 'men'} searching right now!` 
-          : "No men are searching right now—I'll notify you the moment one joins!";
+          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'Man 👨' : 'Men 👨'} searching right now!` 
+          : "No Men 👨 are searching right now—I'll notify you the moment one joins!";
       } else if (user.prefGender === 'female') {
         queueMsg = waitingCount > 0 
-          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'woman' : 'women'} searching right now!` 
-          : "No women are searching right now—I'll notify you the moment one joins!";
+          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'Woman 👩' : 'Women 👩'} searching right now!` 
+          : "No Women 👩 are searching right now—I'll notify you the moment one joins!";
       } else {
         // 'both' or unset - includes the current user
         if (waitingCount > 1) {
@@ -568,12 +568,12 @@ export class CommandHandler {
           const femaleCount = await this.userService.getSearchingCount('female');
           const otherCount = await this.userService.getSearchingCount('other');
 
-          const parts = [];
-          if (maleCount > 0) parts.push(`${maleCount} ${maleCount === 1 ? 'man' : 'men'}`);
-          if (femaleCount > 0) parts.push(`${femaleCount} ${femaleCount === 1 ? 'woman' : 'women'}`);
-          if (otherCount > 0) parts.push(`${otherCount} ${otherCount === 1 ? 'other' : 'others'}`);
+          const lines = [];
+          if (maleCount > 0) lines.push(`There ${maleCount === 1 ? 'is' : 'are'} ${maleCount} ${maleCount === 1 ? 'Man 👨' : 'Men 👨'}`);
+          if (femaleCount > 0) lines.push(`There ${femaleCount === 1 ? 'is' : 'are'} ${femaleCount} ${femaleCount === 1 ? 'Woman 👩' : 'Women 👩'}`);
+          if (otherCount > 0) lines.push(`There ${otherCount === 1 ? 'is' : 'are'} ${otherCount} ${otherCount === 1 ? 'Other 🌈' : 'Others 🌈'}`);
 
-          queueMsg = `There are ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')} searching right now!`;
+          queueMsg = lines.join('\n') + "\n...searching right now!";
         } else {
           queueMsg = "You're the first one here—I'll notify you the moment someone joins!";
         }
