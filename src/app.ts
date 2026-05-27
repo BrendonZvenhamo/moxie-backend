@@ -55,7 +55,8 @@ async function syncDatabase() {
       ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       ADD COLUMN IF NOT EXISTS age INTEGER,
       ADD COLUMN IF NOT EXISTS pref_age_min INTEGER DEFAULT 18,
-      ADD COLUMN IF NOT EXISTS pref_age_max INTEGER DEFAULT 99
+      ADD COLUMN IF NOT EXISTS pref_age_max INTEGER DEFAULT 99,
+      ADD COLUMN IF NOT EXISTS last_reward_at TIMESTAMP WITH TIME ZONE
     `);
 
     // 4. Ensure last_activity_at exists in matches

@@ -85,8 +85,16 @@ export class UserService {
   /**
    * Get the count of users currently searching for a match.
    */
-  async getSearchingCount(): Promise<number> {
-    const result = await query("SELECT count(*) FROM users WHERE status = 'searching'");
+  async getSearchingCount(gender?: string): Promise<number> {
+    let sql = "SELECT count(*) FROM users WHERE status = 'searching'";
+    const params: any[] = [];
+    
+    if (gender && gender !== 'both') {
+      sql += " AND gender = $1";
+      params.push(gender);
+    }
+    
+    const result = await query(sql, params);
     return parseInt(result.rows[0].count);
   }
 
@@ -155,6 +163,23 @@ export class UserService {
    */
   async toggleMedia(userId: string, accept: boolean): Promise<void> {
     await query('UPDATE users SET accept_media = $1 WHERE id = $2', [accept, userId]);
+  }
+
+  /**
+   * Claim daily activity reward.
+   */
+  async claimDailyReward(userId: string): Promise<boolean> {
+    const checkSql = `
+      SELECT last_reward_at FROM users 
+      WHERE id = $1 AND (last_reward_at IS NULL OR last_reward_at < CURRENT_DATE)
+    `;
+    const result = await query(checkSql, [userId]);
+    
+    if (result.rows.length > 0) {
+      await query('UPDATE users SET trust_score = trust_score + 2, last_reward_at = CURRENT_TIMESTAMP WHERE id = $1', [userId]);
+      return true;
+    }
+    return false;
   }
 
   /**

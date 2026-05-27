@@ -25,9 +25,15 @@ export class CommandHandler {
         await adapter.sendMessage(msg.externalId, { type: 'text', content: '💬 Please tell us what you think! Usage: /feedback <your message>' });
       } else {
         await this.userService.saveFeedback(user.id, feedback);
-        await adapter.sendMessage(msg.externalId, { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team.' });
+        await this.userService.updateTrustScore(user.id, 5);
+        await adapter.sendMessage(msg.externalId, { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team. You earned +5 Moxie points!' });
       }
       return true;
+    }
+
+    // Daily activity reward
+    if (await this.userService.claimDailyReward(user.id)) {
+      await adapter.sendMessage(msg.externalId, { type: 'text', content: '🌞 Daily Bonus! You earned +2 Moxie points for being active today.' });
     }
 
     // Check if user is banned
@@ -544,8 +550,24 @@ export class CommandHandler {
       await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
     } else {
       // 3. Only if no match found, show the "Searching" status message
-      const waitingCount = await this.userService.getSearchingCount();
-      const queueMsg = waitingCount > 1 ? `There are ${waitingCount} people searching right now!` : "You're the first one here—I'll notify you the moment someone joins!";
+      const waitingCount = await this.userService.getSearchingCount(user.prefGender);
+      
+      let queueMsg: string;
+      if (user.prefGender === 'male') {
+        queueMsg = waitingCount > 0 
+          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'man' : 'men'} searching right now!` 
+          : "No men are searching right now—I'll notify you the moment one joins!";
+      } else if (user.prefGender === 'female') {
+        queueMsg = waitingCount > 0 
+          ? `There ${waitingCount === 1 ? 'is' : 'are'} ${waitingCount} ${waitingCount === 1 ? 'woman' : 'women'} searching right now!` 
+          : "No women are searching right now—I'll notify you the moment one joins!";
+      } else {
+        // 'both' or unset - includes the current user
+        queueMsg = waitingCount > 1 
+          ? `There are ${waitingCount} people searching right now!` 
+          : "You're the first one here—I'll notify you the moment someone joins!";
+      }
+      
       const interestsStr = user.interests.join(', ') || 'Global';
 
       try {
@@ -620,6 +642,10 @@ export class CommandHandler {
         const startMsg = "🚀 *CONNECTED!* You can now send messages. Have fun!\n\n🤝 /add | 🛡️ /block | 🚪 /stop";
         await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
         
+        // Award connection points (+5)
+        await this.userService.updateTrustScore(user.id, 5);
+        if (partnerId) await this.userService.updateTrustScore(partnerId, 5);
+
         const partnerAdapter = this.relayService.adapters.get(partner.platform);
         if (partnerAdapter) {
           try {
@@ -790,7 +816,12 @@ export class CommandHandler {
         "🤝 *Add:* /add - Send a friend request to stay in touch.\n" +
         "👤 *Profile:* /profile - View or edit your interests.\n" +
         "💬 *Feedback:* /feedback - Share your thoughts with the team.\n\n" +
-        "Need more help? Just message us!"
+        "🌟 *Earning Moxie Points:*\n" +
+        "• 🤝 +10: Becoming friends (/add)\n" +
+        "• 🚀 +5: Connecting with a match\n" +
+        "• 🌞 +2: Daily activity bonus\n" +
+        "• 💬 +5: Giving helpful /feedback\n\n" +
+        "Higher points unlock better Ranks (Verified, Veteran, Elite, Legend) and priority matching!"
     });
   }
 }
