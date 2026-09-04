@@ -1,0 +1,51 @@
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+
+const root = path.resolve(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+const app = read('src/app.ts');
+const matchmaker = read('src/core/services/matchmaker.ts');
+const relay = read('src/core/services/relay.ts');
+const user = read('src/core/services/user.ts');
+const limiter = read('src/utils/rate-limiter.ts');
+const migrations = read('src/infrastructure/database/migrations/001_resilience.sql');
+const outboxWorker = read('src/infrastructure/database/outbox-worker.ts');
+const webhookWorker = read('src/workers/webhook-worker.ts');
+const maintenance = read('src/core/services/maintenance.ts');
+const schema = read('src/infrastructure/database/schema.sql');
+const packageJson = JSON.parse(read('package.json'));
+const envCheck = read('scripts/check-env.js');
+const integrationEnvCheck = read('scripts/check-env-integration.js');
+
+
+assert(!app.includes('setInterval('), 'Business maintenance must not use setInterval');
+assert(!relay.includes('chatBuffers'), 'Chat context must not live in process memory');
+assert(!user.includes('SELECT last_reward_at'), 'Daily reward must not use read-then-write');
+assert(user.includes('RETURNING id'), 'Daily reward must be atomic');
+assert(user.includes('ON CONFLICT (external_id, platform)'), 'User creation must be an atomic upsert');
+assert(migrations.includes('UNIQUE (platform, external_event_id)'), 'Webhook identity must be unique');
+assert(migrations.includes('dedupe_key TEXT NOT NULL UNIQUE'), 'Outbox must have a durable dedupe key');
+assert(outboxWorker.includes('FOR UPDATE SKIP LOCKED'), 'Outbox worker must lock jobs atomically');
+assert(webhookWorker.includes('claimWebhookEvent'), 'Webhook business processing must be worker-driven');
+assert(limiter.includes('FOR UPDATE'), 'Rate limiting must use a database row lock');
+assert(matchmaker.includes('enqueueOutbox(client'), 'Match notifications must be committed transactionally');
+assert(relay.includes('INSERT INTO match_messages'), 'Match chat context must be persisted');
+assert(!relay.includes('.sendMessage('), 'Relay business logic must not call provider sendMessage directly');
+assert(schema.includes('CREATE TABLE users'), 'Baseline schema must contain legacy users table');
+assert(!schema.includes('CREATE TABLE IF NOT EXISTS outbox_messages'), 'Baseline schema must not own resilience tables; migrations must');
+assert(packageJson.scripts['check:env'], 'Production environment check script must exist');
+assert(packageJson.scripts['check:env:integration'], 'Integration environment check script must exist');
+assert(packageJson.scripts['db:up'], 'Local database startup script must exist');
+assert(packageJson.scripts['setup:env'], 'Safe environment bootstrap script must exist');
+assert(integrationEnvCheck.includes('INTEGRATION_DATABASE_URL'), 'Integration env check must validate disposable DB');
+assert(migrations.includes('CREATE TABLE IF NOT EXISTS outbox_messages'), 'Resilience migration must own outbox schema');
+assert(migrations.includes('duplicate active match pairs exist'), 'Migration must fail closed on duplicate active match pairs');
+assert(app.includes("app.get('/health'"), 'Liveness endpoint must exist');
+assert(app.includes("app.get('/ready'"), 'Readiness endpoint must exist');
+assert(app.includes("await runMigrations()"), 'Startup must await migrations');
+assert(app.includes("await wa.initialize()"), 'Startup must await adapter initialization');
+assert(app.includes('runMaintenanceOnce(userService, matchmakingService)'), 'Cold boot must reconcile durable state');
+assert(maintenance.includes('cleanupInactiveMatches'), 'Maintenance must use durable timestamps');
+console.log('✅ Resilience static invariants passed.');

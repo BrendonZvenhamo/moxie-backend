@@ -5,8 +5,30 @@ import { IncomingMessage, IPlatformAdapter } from '../interfaces/platform';
 import { Platform, UserStatus } from '../../types/models';
 import { getMoodDecoration } from '../../utils/mood';
 import { getTrustRank } from '../../utils/trust';
+import { enqueueOutboxStandalone } from '../../infrastructure/database/outbox';
+import { randomUUID } from 'crypto';
 
 export class CommandHandler {
+  /**
+   * Durable outbound boundary for command/UI messages.
+   * Commands may change DB state and then enqueue a message; the adapter is
+   * only invoked by the outbox worker, never from this handler.
+   */
+  private async send(
+    externalId: string,
+    platform: Platform,
+    message: any,
+    dedupeScope: string = randomUUID()
+  ): Promise<void> {
+    if (!externalId) throw new Error(`Cannot enqueue message without recipient (${dedupeScope})`);
+    await enqueueOutboxStandalone({
+      dedupeKey: `cmd:${platform}:${externalId}:${dedupeScope}`,
+      platform,
+      recipientExternalId: externalId,
+      message
+    });
+  }
+
   constructor(
     private userService: UserService,
     private matchmaker: MatchmakingService,
@@ -22,23 +44,23 @@ export class CommandHandler {
       const parts = text.split(' ');
       const feedback = parts.slice(1).join(' ');
       if (!feedback) {
-        await adapter.sendMessage(msg.externalId, { type: 'text', content: '💬 Please tell us what you think! Usage: /feedback <your message>' });
+        await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '💬 Please tell us what you think! Usage: /feedback <your message>' });
       } else {
         await this.userService.saveFeedback(user.id, feedback);
         await this.userService.updateTrustScore(user.id, 5);
-        await adapter.sendMessage(msg.externalId, { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team. You earned +5 Moxie points!' });
+        await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team. You earned +5 Moxie points!' });
       }
       return true;
     }
 
     // Daily activity reward
     if (await this.userService.claimDailyReward(user.id)) {
-      await adapter.sendMessage(msg.externalId, { type: 'text', content: '🌞 Daily Bonus! You earned +2 Moxie points for being active today.' });
+      await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '🌞 Daily Bonus! You earned +2 Moxie points for being active today.' });
     }
 
     // Check if user is banned
     if (user.isBanned) {
-      await adapter.sendMessage(msg.externalId, {
+      await this.send(msg.externalId, adapter.getPlatform(), {
         type: 'text',
         content: '🚫 Your account has been permanently banned for violating our community guidelines.'
       });
@@ -49,7 +71,7 @@ export class CommandHandler {
     if (user.onboardingStep !== 'completed') {
       if (text.toLowerCase() === '/cancel') {
         await this.userService.updateOnboardingStep(user.id, 'completed');
-        await adapter.sendMessage(user.externalId, { type: 'text', content: 'Onboarding cancelled. You can edit your profile later.' });
+        await this.send(user.externalId, adapter.getPlatform(), { type: 'text', content: 'Onboarding cancelled. You can edit your profile later.' });
         await this.showMainMenu(user.externalId, adapter);
         return true;
       }
@@ -114,7 +136,7 @@ export class CommandHandler {
       case '/broadcast':
         const adminIds = process.env.ADMIN_IDS?.split(',') || [];
         if (!adminIds.includes(msg.externalId)) {
-          await adapter.sendMessage(msg.externalId, { type: 'text', content: '🚫 Admin only.' });
+          await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '🚫 Admin only.' });
           break;
         }
         await this.handleBroadcast(args.join(' '), adapter);
@@ -127,10 +149,10 @@ export class CommandHandler {
       case '/feedback':
         const feedback = args.join(' ');
         if (!feedback) {
-          await adapter.sendMessage(msg.externalId, { type: 'text', content: '💬 Please tell us what you think! Usage: /feedback <your message>' });
+          await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '💬 Please tell us what you think! Usage: /feedback <your message>' });
         } else {
           await this.userService.saveFeedback(user.id, feedback);
-          await adapter.sendMessage(msg.externalId, { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team.' });
+          await this.send(msg.externalId, adapter.getPlatform(), { type: 'text', content: '🙏 Thank you! Your feedback has been sent to our team.' });
         }
         return true;
 
@@ -172,7 +194,7 @@ export class CommandHandler {
                  "🌍 *Community:* " + stats.activeNow + " " + prefLabel + " online | " + stats.matchesToday + " matches today\n\n" +
                  "What would you like to do?";
 
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: mood.header,
       body: body,
@@ -199,10 +221,10 @@ export class CommandHandler {
 
       case 'start_onboarding':
         await this.userService.updateOnboardingStep(user.id, 'terms');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '⚖️ TERMS OF SERVICE',
-          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are 100% anonymous.\n\nWe NEVER store your chats.',
+          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie stores limited chat context for safety/reporting and service recovery.',
           buttons: [
             { id: 'accept_terms', text: '✅ I Agree' },
             { id: 'view_help', text: '❓ Help' }
@@ -227,10 +249,10 @@ export class CommandHandler {
         const selectedVibe = buttonId.split('_')[1];
         await this.userService.updateMood(user.id, selectedVibe === 'skip' ? 'None' : selectedVibe);
         await this.userService.updateOnboardingStep(user.id, 'completed');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🎉 ALL SET!',
-          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nYour privacy is 100% guaranteed.',
+          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nWe minimize stored chat context and do not expose your identity to other users unless you choose to reveal it.',
           buttons: [
             { id: 'match_now', text: '🔎 Find Match' },
             { id: 'view_profile', text: '👤 View Profile' }
@@ -255,7 +277,7 @@ export class CommandHandler {
           await this.userService.updateInterests(user.id, currentInterests);
         }
         // Re-show selection with "Done" button
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🎯 SELECT INTERESTS',
           body: `Selected: ${currentInterests.join(', ')}\n\nPick more or click Done!`,
@@ -272,11 +294,11 @@ export class CommandHandler {
 
       case 'interest_done':
         if ((user.interests || []).length === 0) {
-          await adapter.sendMessage(externalId, { type: 'text', content: 'Please select at least one interest!' });
+          await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Please select at least one interest!' });
           await this.showInterestSelection(externalId, adapter);
         } else {
           await this.userService.updateOnboardingStep(user.id, 'gender');
-          await adapter.sendMessage(externalId, {
+          await this.send(externalId, adapter.getPlatform(), {
             type: 'buttons',
             title: '⚧ STEP 3: GENDER',
             body: 'Almost done! Your gender?',
@@ -295,7 +317,7 @@ export class CommandHandler {
         const gender = buttonId.split('_')[1];
         await this.userService.updateGender(user.id, gender);
         await this.userService.updateOnboardingStep(user.id, 'age');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'text',
           content: '🎂 What is your age? (Please reply with just the number, e.g., 25)'
         });
@@ -312,7 +334,7 @@ export class CommandHandler {
         
         await this.userService.updatePrefAge(user.id, min, max);
         await this.userService.updateOnboardingStep(user.id, 'pref_gender');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🎯 STEP 6: GENDER PREFERENCE',
           body: 'Who would you like to talk to?',
@@ -334,7 +356,7 @@ export class CommandHandler {
         break;
 
       case 'confirm_delete_profile':
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '⚠️ DELETE PROFILE?',
           body: 'This will permanently erase your data. This CANNOT be undone.',
@@ -366,7 +388,7 @@ export class CommandHandler {
         const agePrefText = `${user.prefAgeMin}-${user.prefAgeMax}`;
         const interestsStr = user.interests.join(', ') || 'None';
         const userRank = getTrustRank(user.trustScore);
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'text',
           content: "👤 *Your Profile*\n\n" +
             "Rank: " + userRank.emoji + " " + userRank.name + " (" + user.trustScore + ")\n" +
@@ -396,19 +418,19 @@ export class CommandHandler {
         const requesterId = await this.userService.getPendingFriendRequest(user.id);
         if (requesterId) {
           await this.userService.declineFriendRequest(user.id, requesterId);
-          await adapter.sendMessage(externalId, { type: 'text', content: '❌ Friend request declined.' });
+          await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '❌ Friend request declined.' });
         }
         break;
     }
     } catch (error) {
       console.error(`Error handling button ${buttonId} for user ${externalId}:`, error);
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Oops! Something went wrong. Please try again or type /start.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Oops! Something went wrong. Please try again or type /start.' });
     }
   }
 
   private async handleResetProfile(userId: string, externalId: string, adapter: IPlatformAdapter) {
     await this.userService.updateOnboardingStep(userId, 'start');
-    await adapter.sendMessage(externalId, { type: 'text', content: '🔄 Profile reset! Let\'s start over.' });
+    await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '🔄 Profile reset! Let\'s start over.' });
     await this.sendWelcomeMessage(externalId, adapter);
   }
 
@@ -417,7 +439,7 @@ export class CommandHandler {
 
     // Edge case: User sends media/buttons when we expect text (interests)
     if (!text && step === 'interests') {
-      await adapter.sendMessage(externalId, { type: 'text', content: '💬 Please send your response as a text message.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '💬 Please send your response as a text message.' });
       return true;
     }
 
@@ -427,10 +449,10 @@ export class CommandHandler {
     }
 
     if (step === 'terms') {
-      await adapter.sendMessage(externalId, {
+      await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '⚖️ TERMS OF SERVICE',
-        body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are 100% anonymous.\n\nWe NEVER store your chats.',
+        body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie stores limited chat context for safety/reporting and service recovery.',
         buttons: [
           { id: 'accept_terms', text: '✅ I Agree' },
           { id: 'view_help', text: '❓ Help' }
@@ -446,7 +468,7 @@ export class CommandHandler {
       } else {
         await this.userService.updateInterests(user.id, interests);
         await this.userService.updateOnboardingStep(user.id, 'gender');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '⚧ STEP 3: GENDER',
           body: 'Almost done! Your gender?',
@@ -461,7 +483,7 @@ export class CommandHandler {
     }
 
     if (step === 'gender') {
-      await adapter.sendMessage(externalId, {
+      await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '⚧ STEP 3: GENDER',
         body: 'Please select your gender using the buttons below:',
@@ -477,11 +499,11 @@ export class CommandHandler {
     if (step === 'age') {
       const age = parseInt(text);
       if (isNaN(age) || age < 18 || age > 99) {
-        await adapter.sendMessage(externalId, { type: 'text', content: '⚠️ Please enter a valid age (18-99).' });
+        await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '⚠️ Please enter a valid age (18-99).' });
       } else {
         await this.userService.updateAge(user.id, age);
         await this.userService.updateOnboardingStep(user.id, 'pref_age');
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🎯 STEP 5: AGE PREFERENCE',
           body: 'Who would you like to talk to?',
@@ -497,7 +519,7 @@ export class CommandHandler {
     }
 
     if (step === 'pref_age') {
-      await adapter.sendMessage(externalId, {
+      await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '🎯 STEP 5: AGE PREFERENCE',
         body: 'Please select an age range:',
@@ -512,7 +534,7 @@ export class CommandHandler {
     }
 
     if (step === 'pref_gender') {
-      await adapter.sendMessage(externalId, {
+      await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '🎯 STEP 4: PREFERENCE',
         body: 'Who would you like to talk to? Please use the buttons:',
@@ -529,7 +551,7 @@ export class CommandHandler {
   }
 
   private async showInterestSelection(externalId: string, adapter: IPlatformAdapter) {
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: '🎯 STEP 2: INTERESTS',
       body: 'What are you most interested in? Select a category to find people with similar vibes.',
@@ -552,7 +574,7 @@ export class CommandHandler {
     const user = await this.userService.getUserById(userId);
     if (!user) return;
     if (user.status === UserStatus.MATCHED) {
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Already in a match! Use /stop.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Already in a match! Use /stop.' });
       return;
     }
 
@@ -563,7 +585,8 @@ export class CommandHandler {
     const match = await this.matchmaker.findMatch(userId, false, user);
     
     if (match) {
-      await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
+      // Match notifications are transactionally enqueued by MatchmakingService.
+      return;
     } else {
       // 3. Only if no match found, show the "Searching" status message
       const waitingCount = await this.userService.getSearchingCount(user.prefGender);
@@ -598,7 +621,7 @@ export class CommandHandler {
       const interestsStr = user.interests.join(', ') || 'Global';
 
       try {
-        await adapter.sendMessage(externalId, {
+        await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🔎 SEARCHING...',
           body: "Searching for: " + interestsStr + "\n\n👥 " + queueMsg + "\n\nNo immediate match found. Want to try a random match or wait?",
@@ -617,17 +640,16 @@ export class CommandHandler {
     try {
       // 1. Set status to searching first
       await this.userService.updateStatus(userId, UserStatus.SEARCHING);
-      await adapter.sendMessage(externalId, { type: 'text', content: '🎲 Attempting a random match...' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '🎲 Attempting a random match...' });
 
       // 2. Try to find a match (don't pass old user object, let it fetch fresh)
       const match = await this.matchmaker.findMatch(userId, true);
       
       if (match) {
         console.log(`Random match success: ${match.id}`);
-        await this.relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
       } else {
         console.log(`No random match found for ${userId}, staying in queue.`);
-        await adapter.sendMessage(externalId, { type: 'text', content: 'Still searching... I will notify you! ⏳' });
+        await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Still searching... I will notify you! ⏳' });
       }
     } catch (error: any) {
       console.error('Error in handleRandomMatch:', error);
@@ -639,15 +661,14 @@ export class CommandHandler {
     const activeMatch = await this.matchmaker.getActiveMatch(userId);
     if (activeMatch) {
       const partnerId = activeMatch.userIds.find(id => id !== userId);
-      await this.matchmaker.endMatch(activeMatch.id);
-      await adapter.sendMessage(externalId, { type: 'text', content: '🛑 Chat ended.' });
+      await this.matchmaker.endMatch(activeMatch.id, 'Stranger left');
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '🛑 Chat ended.' });
       await this.showMainMenu(externalId, adapter);
-      if (partnerId) await this.relayService.notifyMatchEnded(partnerId, 'Stranger left');
     } else {
       const user = await this.userService.getUserById(userId);
       const wasSearching = user?.status === UserStatus.SEARCHING;
       await this.userService.updateStatus(userId, UserStatus.IDLE, null, null);
-      await adapter.sendMessage(externalId, { type: 'text', content: wasSearching ? '🛑 Search stopped.' : '🛑 Returned to menu.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: wasSearching ? '🛑 Search stopped.' : '🛑 Returned to menu.' });
       await this.showMainMenu(externalId, adapter);
     }
   }
@@ -667,22 +688,15 @@ export class CommandHandler {
     if (partner) {
       if (partner.isReady) {
         const startMsg = "🚀 *CONNECTED!* You can now send messages. Have fun!\n\n🤝 /add | 🛡️ /block | 🚪 /stop";
-        await adapter.sendMessage(user.externalId, { type: 'text', content: startMsg });
+        await this.send(user.externalId, adapter.getPlatform(), { type: 'text', content: startMsg });
         
         // Award connection points (+5)
         await this.userService.updateTrustScore(user.id, 5);
         if (partnerId) await this.userService.updateTrustScore(partnerId, 5);
 
-        const partnerAdapter = this.relayService.adapters.get(partner.platform);
-        if (partnerAdapter) {
-          try {
-            await partnerAdapter.sendMessage(partner.externalId, { type: 'text', content: startMsg });
-          } catch (e) {
-            console.error(`Failed to notify partner (${partner.externalId}) of match connection:`, e);
-          }
-        }
+        await this.send(partner.externalId, partner.platform, { type: 'text', content: startMsg }, `match-connected:${match.id}:partner:${partner.id}`);
       } else {
-        await adapter.sendMessage(user.externalId, { type: 'text', content: '✅ Status: Ready. Waiting for the stranger...' });
+        await this.send(user.externalId, adapter.getPlatform(), { type: 'text', content: '✅ Status: Ready. Waiting for the stranger...' });
       }
     }
   }
@@ -693,9 +707,8 @@ export class CommandHandler {
       const partnerId = match.userIds.find(id => id !== userId);
       if (partnerId) {
         await this.userService.blockUser(userId, partnerId);
-        await this.matchmaker.endMatch(match.id);
+        await this.matchmaker.endMatch(match.id, 'Stranger ended chat');
         await this.showMainMenu(externalId, adapter);
-        await this.relayService.notifyMatchEnded(partnerId, 'Stranger ended chat');
       }
     }
   }
@@ -705,13 +718,13 @@ export class CommandHandler {
     if (match) {
       const partnerId = match.userIds.find(id => id !== userId);
       if (partnerId) {
-        const chatLog = this.relayService.getChatLog(match.id);
+        const chatLog = await this.relayService.getChatLog(match.id);
         await this.userService.reportUser(userId, partnerId, 'Reported via /report', chatLog);
         await this.handleBlock(userId, externalId, adapter);
-        await adapter.sendMessage(externalId, { type: 'text', content: '🚩 User reported and blocked.' });
+        await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '🚩 User reported and blocked.' });
       }
     } else {
-      await adapter.sendMessage(externalId, { type: 'text', content: 'Only while in match.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Only while in match.' });
     }
   }
 
@@ -720,15 +733,19 @@ export class CommandHandler {
     const { query } = require('../../infrastructure/database/pool');
     const result = await query('SELECT external_id, platform FROM users WHERE is_banned = FALSE');
     const users = result.rows.filter((r: any) => r.platform === adapter.getPlatform());
+    const broadcastId = randomUUID();
     for (const user of users) {
-      try {
-        await adapter.sendMessage(user.external_id, { type: 'text', content: "📢 ADMIN:\n\n" + message });
-      } catch (err) {}
+      await this.send(
+        user.external_id,
+        adapter.getPlatform(),
+        { type: 'text', content: "📢 ADMIN:\n\n" + message },
+        `broadcast:${broadcastId}:${user.external_id}`
+      );
     }
   }
 
   private async showPurposeSelection(externalId: string, adapter: IPlatformAdapter) {
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: '🎯 STEP 1: PURPOSE',
       body: 'What are you here for?',
@@ -741,7 +758,7 @@ export class CommandHandler {
   }
 
   private async showMoodSelection(externalId: string, adapter: IPlatformAdapter) {
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: '✨ SELECT YOUR VIBE',
       body: 'How are you feeling right now? We will match you with people in the same mood.',
@@ -761,11 +778,11 @@ export class CommandHandler {
       const partnerId = match.userIds.find(id => id !== userId);
       if (partnerId) {
         await this.userService.sendFriendRequest(userId, partnerId);
-        await adapter.sendMessage(externalId, { type: 'text', content: 'Request sent! Waiting for them to /accept.' });
+        await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'Request sent! Waiting for them to /accept.' });
         await this.relayService.notifyFriendRequest(userId, partnerId);
       }
     } else {
-      await adapter.sendMessage(externalId, { type: 'text', content: 'You can only add a contact while in an active match.' });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: 'You can only add a contact while in an active match.' });
     }
   }
 
@@ -776,16 +793,16 @@ export class CommandHandler {
       await this.relayService.notifyFriendAccepted(requesterId, userId);
     } else {
       const user = await this.userService.getUserById(userId);
-      if (user) await adapter.sendMessage(user.externalId, { type: 'text', content: 'You have no pending friend requests.' });
+      if (user) await this.send(user.externalId, adapter.getPlatform(), { type: 'text', content: 'You have no pending friend requests.' });
     }
   }
 
   private async handleListContacts(userId: string, externalId: string, adapter: IPlatformAdapter) {
     const contacts = await this.userService.getContacts(userId);
     if (contacts.length === 0) {
-      await adapter.sendMessage(externalId, { type: 'text', content: "No contacts yet." });
+      await this.send(externalId, adapter.getPlatform(), { type: 'text', content: "No contacts yet." });
     } else {
-      await adapter.sendMessage(externalId, {
+      await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '👥 YOUR CONTACTS',
         body: 'Select a friend to start a private conversation.',
@@ -797,34 +814,21 @@ export class CommandHandler {
     }
   }
 
-  private async startPrivateChat(userId: string, friendId: string, adapter: IPlatformAdapter) {
-    const friend = await this.userService.getUserById(friendId);
-    if (friend) {
-      await this.userService.updateStatus(userId, UserStatus.IDLE, null, friendId);
-      await adapter.sendMessage(adapter.getPlatform() === friend.platform ? friend.externalId : '', { 
-        type: 'text', 
-        content: `🔔 *SYSTEM:* Your friend is messaging you! Type /contacts to chat back.` 
-      });
-      await adapter.sendMessage(adapter.getPlatform() === friend.platform ? '' : '', { type: 'text', content: `Switched to chat with ${friend.username}. Send a message!` });
-    }
-  }
-
   private async handleDeleteProfile(userId: string, externalId: string, adapter: IPlatformAdapter) {
     const activeMatch = await this.matchmaker.getActiveMatch(userId);
     if (activeMatch) {
       const partnerId = activeMatch.userIds.find(id => id !== userId);
-      await this.matchmaker.endMatch(activeMatch.id);
-      if (partnerId) await this.relayService.notifyMatchEnded(partnerId, 'Stranger left');
+      await this.matchmaker.endMatch(activeMatch.id, 'Account deleted', false);
     }
     await this.userService.deleteUser(userId);
-    await adapter.sendMessage(externalId, { type: 'text', content: '🗑️ Deleted. Goodbye!' });
+    await this.send(externalId, adapter.getPlatform(), { type: 'text', content: '🗑️ Deleted. Goodbye!' });
   }
 
   private async sendWelcomeMessage(externalId: string, adapter: IPlatformAdapter) {
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: '🌟 WELCOME TO MOXIE',
-      body: 'Connect anonymously with strangers based on shared interests.\n\n🔒 PRIVACY: We do NOT store your messages, and your identity is hidden until you choose to reveal it.\n\n💬 Have feedback? Use /feedback to tell us what you think!',
+      body: 'Connect anonymously with strangers based on shared interests.\n\n🔒 PRIVACY: Moxie stores limited chat context for safety/reporting. Your identity is hidden from other users until you choose to reveal it.\n\n💬 Have feedback? Use /feedback to tell us what you think!',
       buttons: [
         { id: 'start_onboarding', text: '📝 Create Profile' },
         { id: 'view_help', text: '❓ How it works' }
@@ -833,7 +837,7 @@ export class CommandHandler {
   }
 
   private async sendHelpMessage(externalId: string, adapter: IPlatformAdapter) {
-    await adapter.sendMessage(externalId, {
+    await this.send(externalId, adapter.getPlatform(), {
       type: 'text',
       content: "📖 *Moxie Guide*\n\n" +
         "🔎 *Match:* /match - Find a stranger who shares your interests.\n" +

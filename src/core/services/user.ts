@@ -9,29 +9,15 @@ export class UserService {
   async getOrCreateUser(externalId: string, platform: Platform, username?: string): Promise<User> {
     const sanitizedUsername = username ? this.sanitize(username) : undefined;
     
-    const findSql = `
-      SELECT * FROM users 
-      WHERE external_id = $1 AND platform = $2
-    `;
-    const findResult = await query(findSql, [externalId, platform]);
-
-    if (findResult.rows.length > 0) {
-      const user = findResult.rows[0];
-      // Update username if it changed
-      if (sanitizedUsername && user.username !== sanitizedUsername) {
-        await query('UPDATE users SET username = $1 WHERE id = $2', [sanitizedUsername, user.id]);
-        user.username = sanitizedUsername;
-      }
-      return this.mapRowToUser(user);
-    }
-
-    const createSql = `
+    const upsertSql = `
       INSERT INTO users (external_id, platform, username, status)
       VALUES ($1, $2, $3, $4)
+      ON CONFLICT (external_id, platform) DO UPDATE
+      SET username = CASE WHEN EXCLUDED.username IS NOT NULL THEN EXCLUDED.username ELSE users.username END
       RETURNING *
     `;
-    const createResult = await query(createSql, [externalId, platform, sanitizedUsername, UserStatus.IDLE]);
-    return this.mapRowToUser(createResult.rows[0]);
+    const result = await query(upsertSql, [externalId, platform, sanitizedUsername, UserStatus.IDLE]);
+    return this.mapRowToUser(result.rows[0]);
   }
 
   /**
@@ -176,17 +162,14 @@ export class UserService {
    * Claim daily activity reward.
    */
   async claimDailyReward(userId: string): Promise<boolean> {
-    const checkSql = `
-      SELECT last_reward_at FROM users 
-      WHERE id = $1 AND (last_reward_at IS NULL OR last_reward_at < CURRENT_DATE)
-    `;
-    const result = await query(checkSql, [userId]);
-    
-    if (result.rows.length > 0) {
-      await query('UPDATE users SET trust_score = trust_score + 2, last_reward_at = CURRENT_TIMESTAMP WHERE id = $1', [userId]);
-      return true;
-    }
-    return false;
+    const result = await query(
+      `UPDATE users
+       SET trust_score = trust_score + 2, last_reward_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+         AND (last_reward_at IS NULL OR last_reward_at < CURRENT_DATE)
+       RETURNING id`, [userId]
+    );
+    return result.rows.length > 0;
   }
 
   /**

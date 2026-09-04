@@ -1,0 +1,43 @@
+name: Moxie CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moxie
+          POSTGRES_PASSWORD: moxie_dev
+          POSTGRES_DB: moxie
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moxie -d moxie"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://moxie:moxie_dev@localhost:5432/moxie_ci_web
+      INTEGRATION_DATABASE_URL: postgresql://moxie:moxie_dev@localhost:5432/moxie
+      WHATSAPP_TOKEN: ci-placeholder
+      WHATSAPP_PHONE_ID: ci-placeholder
+      WHATSAPP_API_VERSION: v19.0
+      WHATSAPP_VERIFY_TOKEN: ci-placeholder
+      DASHBOARD_PASSWORD: ci-placeholder
+      ADMIN_IDS: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check:env
+      - run: npm run build
+      - run: npm run test:resilience:static
+      - run: npm run test:resilience:integration
