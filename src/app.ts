@@ -7,74 +7,13 @@ import { MatchmakingService } from './core/services/matchmaker';
 import { CommandHandler } from './core/services/commands';
 import { RelayService } from './core/services/relay';
 import { DashboardService } from './core/services/dashboard';
-import { RateLimiter } from './utils/rate-limiter';
+import { runMaintenanceOnce } from './core/services/maintenance';
 import { OfficialWhatsAppAdapter } from './adapters/whatsapp/official';
 import { Platform } from './types/models';
+import { runMigrations } from './infrastructure/database/migrations';
+import { ingestWebhookEvent, extractExternalEventId } from './infrastructure/database/webhook-events';
 
 dotenv.config();
-
-/**
- * Ensures the database schema is up to date for new features.
- */
-async function syncDatabase() {
-  console.log('Syncing database schema...');
-  try {
-    // 1. Ensure feedbacks table exists
-    await query(`
-      CREATE TABLE IF NOT EXISTS feedbacks (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        user_id UUID REFERENCES users(id),
-        content TEXT NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 2. Ensure reports table exists
-    await query(`
-      CREATE TABLE IF NOT EXISTS reports (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        reporter_id UUID REFERENCES users(id),
-        reported_id UUID REFERENCES users(id),
-        reason TEXT,
-        chat_log JSONB DEFAULT '[]',
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 3. Ensure pref_gender column exists in users
-    await query(`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS pref_gender TEXT,
-      ADD COLUMN IF NOT EXISTS active_contact_id UUID,
-      ADD COLUMN IF NOT EXISTS mood TEXT,
-      ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 100,
-      ADD COLUMN IF NOT EXISTS accept_media BOOLEAN DEFAULT TRUE,
-      ADD COLUMN IF NOT EXISTS is_ready BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS last_match_attempt_at TIMESTAMP WITH TIME ZONE,
-      ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      ADD COLUMN IF NOT EXISTS age INTEGER,
-      ADD COLUMN IF NOT EXISTS pref_age_min INTEGER DEFAULT 18,
-      ADD COLUMN IF NOT EXISTS pref_age_max INTEGER DEFAULT 99,
-      ADD COLUMN IF NOT EXISTS last_reward_at TIMESTAMP WITH TIME ZONE
-    `);
-
-    // 4. Ensure last_activity_at exists in matches
-    await query(`
-      ALTER TABLE matches
-      ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    `);
-
-    // 5. Ensure indexes exist for performance
-    await query(`CREATE INDEX IF NOT EXISTS idx_users_last_activity ON users(last_activity_at)`);
-    await query(`CREATE INDEX IF NOT EXISTS idx_users_trust_score ON users(trust_score)`);
-    await query(`CREATE INDEX IF NOT EXISTS idx_matches_last_activity ON matches(last_activity_at)`);
-
-    console.log('✅ Database sync complete.');
-  } catch (err: any) {
-    console.warn('⚠️ Database sync warning (tables might already exist or need manual setup):', err.message);
-  }
-}
 
 /**
  * Returns the visual HTML for the Admin Dashboard.
@@ -294,167 +233,123 @@ const DASHBOARD_HTML = (password: string) => {
   ].join('\n');
 };
 
+
 async function bootstrap() {
   const app = express();
   const port = Number(process.env.PORT) || 3000;
+  let ready = false;
 
-  // A. HIGH-VISIBILITY LOGGER (First Priority)
   app.use((req: Request, res: Response, next: NextFunction) => {
     const forward = req.headers['x-forwarded-for'] || 'no-proxy';
     console.log(`[INCOMING] ${req.method} ${req.url} | RealIP: ${forward} | LocalIP: ${req.ip}`);
     next();
   });
-
   app.use(bodyParser.json({ limit: '50mb' }));
 
-  // B. STATIC ROUTES (Defined BEFORE listen)
-  app.get('/health', (req, res) => res.status(200).send('OK'));
-  app.get('/version', (req, res) => {
-    res.send('Moxie v1.2.0 Online');
+  app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
+  app.get('/ready', (_req, res) => {
+    if (!ready) return res.status(503).json({ ok: false });
+    res.status(200).json({ ok: true });
   });
+  app.get('/version', (_req, res) => res.send('Moxie v2.0.0'));
+  app.get('/', (req, res) => res.send(DASHBOARD_HTML(String(req.query.pw || ''))));
+  app.get('/privacy', (_req, res) => res.send('<html><body><h1>Privacy Policy</h1><p>Moxie stores limited chat context for safety, reporting, and service recovery. Your identity is not exposed to other users unless you choose to reveal it.</p></body></html>'));
 
-  app.get('/', (req, res) => {
-    res.send(DASHBOARD_HTML(String(req.query.pw || '')));
-  });
-
-  app.get('/privacy', (req, res) => {
-    res.send('<html><body><h1>Privacy Policy</h1><p>We do NOT store messages.</p></body></html>');
-  });
-
-  // C. START LISTENING
-  const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 MOXIE SERVER v1.2.0 LISTENING ON PORT ${port}`);
-  });
-
-  console.log('--- MOXIE BOOTSTRAP INITIALIZED ---');
-  
   try {
-    // 3. DATABASE SYNC (Async)
-    console.log('Starting background initialization...');
-    await syncDatabase();
+    console.log('--- MOXIE BOOTSTRAP ---');
+    await runMigrations();
 
     const userService = new UserService();
     const matchmakingService = new MatchmakingService(userService);
     const relayService = new RelayService(userService, matchmakingService);
     const commandHandler = new CommandHandler(userService, matchmakingService, relayService);
     const dashboardService = new DashboardService();
-    const rateLimiter = new RateLimiter();
-    
+
+    const adapters = new Map<Platform, OfficialWhatsAppAdapter>();
+    const wa = new OfficialWhatsAppAdapter();
+    adapters.set(Platform.WHATSAPP, wa);
+    relayService.registerAdapter(Platform.WHATSAPP, wa);
+    await wa.initialize();
+    const dbCheck = await query('SELECT 1 AS ok');
+    if (!dbCheck.rows.length) throw new Error('Database readiness query returned no result');
+    if (!wa.isReady()) throw new Error('WhatsApp adapter is not configured');
+
+    // Reconcile durable state on every cold boot. This is a recovery pass, not a timer.
+    const recovery = await runMaintenanceOnce(userService, matchmakingService);
+    console.log(`🔄 Startup reconciliation: ${JSON.stringify(recovery)}`);
+
     const verifyDashboardAuth = (req: Request): boolean => {
       const password = (process.env.DASHBOARD_PASSWORD || '').trim();
-      if (!password) {
-        console.warn('DASHBOARD_PASSWORD not set in environment!');
-        return false;
-      }
-      const provided = (String(req.query.pw || req.headers['x-dashboard-pw'] || req.query.password || '')).trim();
-      const isMatch = provided === password;
-      if (!isMatch && provided) {
-        console.warn(`Unauthorized dashboard attempt. Provided: "${provided}", Expected: "${password}"`);
-      }
-      return isMatch;
+      if (!password) return false;
+      const provided = String(req.query.pw || req.headers['x-dashboard-pw'] || req.query.password || '').trim();
+      return provided === password;
     };
 
-    // API stats
     app.get('/api/stats', async (req, res) => {
-      if (!verifyDashboardAuth(req)) {
-        console.warn('Unauthorized access attempt to /api/stats');
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+      if (!verifyDashboardAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
       const date = typeof req.query.date === 'string' ? req.query.date : undefined;
       res.json(await dashboardService.getStats(date));
     });
 
-    // API Reset
     app.post('/api/reset', async (req, res) => {
       if (!verifyDashboardAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
       await dashboardService.resetStats();
       res.json({ success: true });
     });
 
-    // API Broadcast
     app.post('/api/broadcast', async (req, res) => {
       if (!verifyDashboardAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
-      if (adapters.length > 0 && req.body.message) {
-        await commandHandler.handleBroadcast(req.body.message, adapters[0]);
-        res.json({ success: true });
-      } else {
-        res.status(400).json({ error: 'Broadcast failed' });
-      }
+      if (!req.body.message) return res.status(400).json({ error: 'Broadcast failed' });
+      await commandHandler.handleBroadcast(req.body.message, wa);
+      res.json({ success: true });
     });
 
-    // Background Maintenance: Run every 60 seconds
-    setInterval(async () => {
-      try {
-        // 1. Cleanup stale handshakes (2 min timeout)
-        const endedHandshakes = await matchmakingService.cleanupPendingHandshakes(2);
-        for (const userId of endedHandshakes) {
-          await relayService.notifyMatchEnded(userId, 'Match timed out (no confirmation)');
-        }
+    // Meta verification challenge.
+    app.get('/webhooks/whatsapp', (req, res) => {
+      const mode = req.query['hub.mode'];
+      const token = req.query['hub.verify_token'];
+      const challenge = req.query['hub.challenge'];
+      if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) return res.status(200).send(String(challenge));
+      return res.sendStatus(403);
+    });
 
-        // 2. Cleanup inactive matches (20 min timeout)
-        const inactiveMatches = await matchmakingService.cleanupInactiveMatches(20);
-        for (const userId of inactiveMatches) {
-          await relayService.notifyMatchEnded(userId, 'Match ended due to inactivity');
-        }
-
-        // 3. Periodic Match Re-check (limited batch for stability)
-        const batch = await userService.getSearchingUsers(5);
-        
-        for (const s of batch) {
-          // If waiting for more than 3 minutes, automatically try a random match
-          const waitTime = Date.now() - new Date(s.lastMatchAttemptAt || s.createdAt).getTime();
-          const shouldRandomize = waitTime > 3 * 60000;
-
-          const match = await matchmakingService.findMatch(s.id, shouldRandomize, s);
-          if (match) {
-            await relayService.notifyMatch(match.userIds[0], match.userIds[1], match.interests);
-          }
-        }
-      } catch (e) {
-        console.error('Background maintenance error:', e);
-      }
-    }, 60000);
-
-    // Handle adapters
-    const adapters: any[] = [];
-
-    try {
-      const wa = new OfficialWhatsAppAdapter();
-      adapters.push(wa);
-      relayService.registerAdapter(Platform.WHATSAPP, wa);
-    } catch (e) { console.error('WhatsApp registration failed'); }
-
+    // Ingestion is deliberately fast and durable. Business logic is processed by webhook-worker.ts.
     app.post('/webhooks/whatsapp', async (req, res) => {
       try {
-        const wa = adapters.find(a => a.getPlatform && a.getPlatform() === Platform.WHATSAPP);
-        if (wa) await wa.handleWebhookPayload(req.body);
-        res.sendStatus(200);
-      } catch (err) { res.sendStatus(500); }
+        const eventId = extractExternalEventId(req.body);
+        if (!eventId) return res.sendStatus(200);
+        await ingestWebhookEvent(Platform.WHATSAPP, eventId, req.body);
+        return res.sendStatus(200);
+      } catch (error) {
+        console.error('Webhook ingestion failure:', error);
+        return res.sendStatus(503);
+      }
     });
 
-    // Initialize adapters in background
-    (async () => {
-      for (const adapter of adapters) {
-        try {
-          adapter.onMessage(async (msg: any) => {
-            if (!rateLimiter.isAllowed(msg.externalId)) return;
-            if (await commandHandler.handle(msg, adapter)) return;
-            await relayService.relayMessage(msg, adapter.getPlatform());
-          });
-          if (adapter.onTypingState) adapter.onTypingState(async (id: string) => relayService.relayTypingState(id, adapter.getPlatform()));
-          if (adapter.onButtonSelected) adapter.onButtonSelected(async (id: string, btn: string) => commandHandler.handleButton(id, btn, adapter));
-          await adapter.initialize();
-          console.log(adapter.getPlatform() + ' fully initialized.');
-        } catch (error) {
-          console.error('Adapter initialization crash');
-        }
-      }
-    })();
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`🚀 MOXIE SERVER v2.0.0 LISTENING ON PORT ${port}`);
+    });
 
+    ready = true;
+    console.log('✅ Moxie is READY. Webhooks are durable-ingestion only.');
+
+    const shutdown = async (signal: string) => {
+      console.log(`Received ${signal}; draining HTTP server.`);
+      ready = false;
+      await new Promise<void>(resolve => server.close(() => resolve()));
+      process.exit(0);
+    };
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+
+    // Keep references alive for route callbacks; all business execution is now worker-driven.
+    void userService;
+    void matchmakingService;
+    void relayService;
   } catch (err) {
     console.error('CRITICAL STARTUP ERROR:', err);
     process.exit(1);
   }
 }
 
-bootstrap().catch(err => { console.error('BOOTSTRAP FATAL:', err); });
+bootstrap().catch(err => { console.error('BOOTSTRAP FATAL:', err); process.exit(1); });

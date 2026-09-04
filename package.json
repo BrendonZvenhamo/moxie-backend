@@ -1,29 +1,44 @@
 {
   "name": "moxie-backend",
-  "version": "1.0.7",
+  "version": "2.0.0",
   "main": "dist/app.js",
   "scripts": {
     "start": "node dist/app.js",
     "dev": "nodemon src/app.ts",
-    "build": "tsc",
-    "postinstall": "npm run build"
+    "build": "tsc && node scripts/copy-migrations.js",
+    "check:env": "node scripts/check-env.js",
+    "postinstall": "npm run build",
+    "start:webhook-worker": "node dist/workers/webhook-worker.js",
+    "start:outbox-worker": "node dist/workers/outbox-worker.js",
+    "maintenance": "node dist/workers/maintenance-worker.js",
+    "test:resilience:static": "node tests/resilience-static.js",
+    "test:resilience:integration": "npm run check:env:integration && npm run build && node tests/integration/resilience.integration.js",
+    "test:resilience": "npm run check:env && npm run build && npm run test:resilience:static && npm run test:resilience:integration",
+    "check:env:integration": "node scripts/check-env-integration.js",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "setup:env": "node scripts/setup-env.js"
   },
   "engines": {
     "node": ">=18.x"
   },
   "dependencies": {
-    "axios": "^1.6.0",
-    "body-parser": "^1.20.2",
+    "axios": "^1.16.1",
+    "body-parser": "^2.2.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "form-data": "^4.0.0",
+    "form-data": "^4.0.5",
     "pg": "^8.11.5",
-    "uuid": "^9.0.1"
+    "qrcode-terminal": "^0.12.0",
+    "telegraf": "^4.16.3",
+    "uuid": "^9.0.1",
+    "whatsapp-web.js": "^1.23.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.12.7",
     "@types/pg": "^8.11.5",
+    "@types/qrcode-terminal": "^0.12.0",
     "@types/uuid": "^9.0.8",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",

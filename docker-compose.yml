@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: moxie
+      POSTGRES_PASSWORD: moxie_dev
+      POSTGRES_DB: moxie
+    ports:
+      - "5432:5432"

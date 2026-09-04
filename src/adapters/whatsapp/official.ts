@@ -110,6 +110,7 @@ export class OfficialWhatsAppAdapter implements IPlatformAdapter {
       });
     } catch (error: any) {
       console.error('❌ Failed to send Official WhatsApp message:', error.response?.data || error.message);
+      throw error;
     }
   }
 
