@@ -18,6 +18,8 @@ const schema = read('src/infrastructure/database/schema.sql');
 const packageJson = JSON.parse(read('package.json'));
 const envCheck = read('scripts/check-env.js');
 const integrationEnvCheck = read('scripts/check-env-integration.js');
+const legacySchema = read('tests/fixtures/legacy-schema.sql');
+const runtime = read('src/runtime.ts');
 
 
 assert(!app.includes('setInterval('), 'Business maintenance must not use setInterval');
@@ -34,11 +36,20 @@ assert(matchmaker.includes('enqueueOutbox(client'), 'Match notifications must be
 assert(relay.includes('INSERT INTO match_messages'), 'Match chat context must be persisted');
 assert(!relay.includes('.sendMessage('), 'Relay business logic must not call provider sendMessage directly');
 assert(schema.includes('CREATE TABLE users'), 'Baseline schema must contain legacy users table');
+assert.equal(schema, legacySchema, 'Baseline schema must remain byte-for-byte identical to the legacy Moxie schema snapshot');
 assert(!schema.includes('CREATE TABLE IF NOT EXISTS outbox_messages'), 'Baseline schema must not own resilience tables; migrations must');
 assert(packageJson.scripts['check:env'], 'Production environment check script must exist');
 assert(packageJson.scripts['check:env:integration'], 'Integration environment check script must exist');
+assert(packageJson.scripts['test:legacy-migration'], 'Legacy migration integration test script must exist');
+assert(!packageJson.scripts['test:resilience'].includes('check:env &&'), 'Aggregate resilience tests must not require production credentials');
 assert(packageJson.scripts['db:up'], 'Local database startup script must exist');
 assert(packageJson.scripts['setup:env'], 'Safe environment bootstrap script must exist');
+assert.equal(packageJson.scripts['start'], 'node dist/runtime.js', 'Production start must launch the single-service runtime supervisor');
+assert.equal(packageJson.scripts['start:web'], 'node dist/app.js', 'Direct web-only startup must remain available');
+assert(runtime.includes("path.join(__dirname, 'app.js')"), 'Runtime supervisor must launch the web process');
+assert(runtime.includes("'webhook-worker.js'"), 'Runtime supervisor must launch the webhook worker');
+assert(runtime.includes("'outbox-worker.js'"), 'Runtime supervisor must launch the outbox worker');
+assert(runtime.includes("child.on('exit'"), 'Runtime supervisor must fail closed when a child exits');
 assert(integrationEnvCheck.includes('INTEGRATION_DATABASE_URL'), 'Integration env check must validate disposable DB');
 assert(migrations.includes('CREATE TABLE IF NOT EXISTS outbox_messages'), 'Resilience migration must own outbox schema');
 assert(migrations.includes('duplicate active match pairs exist'), 'Migration must fail closed on duplicate active match pairs');

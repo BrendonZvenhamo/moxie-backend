@@ -3,7 +3,8 @@
   "version": "2.0.0",
   "main": "dist/app.js",
   "scripts": {
-    "start": "node dist/app.js",
+    "start": "node dist/runtime.js",
+    "start:web": "node dist/app.js",
     "dev": "nodemon src/app.ts",
     "build": "tsc && node scripts/copy-migrations.js",
     "check:env": "node scripts/check-env.js",
@@ -13,11 +14,12 @@
     "maintenance": "node dist/workers/maintenance-worker.js",
     "test:resilience:static": "node tests/resilience-static.js",
     "test:resilience:integration": "npm run check:env:integration && npm run build && node tests/integration/resilience.integration.js",
-    "test:resilience": "npm run check:env && npm run build && npm run test:resilience:static && npm run test:resilience:integration",
+    "test:resilience": "npm run build && npm run test:resilience:static && npm run check:env:integration && node tests/integration/resilience.integration.js && node tests/integration/legacy-migration.integration.js",
     "check:env:integration": "node scripts/check-env-integration.js",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "setup:env": "node scripts/setup-env.js"
+    "setup:env": "node scripts/setup-env.js",
+    "test:legacy-migration": "npm run check:env:integration && npm run build && node tests/integration/legacy-migration.integration.js"
   },
   "engines": {
     "node": ">=18.x"
