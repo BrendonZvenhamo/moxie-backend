@@ -13,10 +13,13 @@ Match state and match notification intent are committed in the same transaction.
 Run these independently in production:
 
 ```text
-Web/API process       npm start
-Webhook worker        npm run start:webhook-worker
-Outbox worker         npm run start:outbox-worker
-Maintenance/Cron      npm run maintenance
+Single-service runtime  npm start
+  ├─ Web/API             node dist/app.js
+  ├─ Webhook worker      node dist/workers/webhook-worker.js
+  └─ Outbox worker       node dist/workers/outbox-worker.js
+Maintenance (one-shot)  npm run maintenance
+
+For hosts that support separate process types, the individual commands remain available as `npm run start:web`, `npm run start:webhook-worker`, and `npm run start:outbox-worker`.
 ```
 
 The maintenance command is intentionally a one-shot process. Run it from a platform cron/scheduler. There is no application-level business `setInterval()` dependency.
@@ -78,11 +81,11 @@ Use a disposable PostgreSQL database. The suite is destructive and truncates app
 npm run db:up
 ```
 
-2. Create a local environment file and verify it:
+2. Create a local environment file. `npm run check:env` validates production configuration; the destructive test suite validates `INTEGRATION_DATABASE_URL` separately.
 
 ```bash
 npm run setup:env
-npm run check:env
+npm run check:env:integration
 ```
 
 3. Run the complete resilience gate:
@@ -100,32 +103,44 @@ The integration suite verifies:
 - Match creation updates both users and inserts both outbox notifications in the same database transaction.
 - A worker process killed with `SIGKILL` while holding an outbox lease is recovered after lease expiry.
 - Cold-boot maintenance detects and closes stale matches and creates durable end notifications.
+- The exact legacy Moxie schema is populated with representative users, matches, reports, blocks, contacts, and feedback, then upgraded in place; all legacy rows and IDs must survive and all Work 2 migrations must be recorded.
 
 The crash test deliberately kills a child process. Run it only against a disposable integration database.
 
 ## Render deployment contract
 
-Work 2 is a multi-process deployment. Do not replace the old Render Web Service with `npm start` alone. Configure these processes from the same Git revision:
+The default production command is now intentionally **single-service compatible**:
 
-| Render process | Command | Purpose |
-|---|---|---|
-| Web Service | `npm start` | Health checks, dashboard, Meta webhook ingestion |
-| Background Worker | `npm run start:webhook-worker` | Processes durable `webhook_events` |
-| Background Worker | `npm run start:outbox-worker` | Delivers durable `outbox_messages` |
-| Cron Job | `npm run maintenance` | Cold-start/stale-state reconciliation |
-
-Required production environment variables:
-
-```text
-DATABASE_URL
-WHATSAPP_TOKEN
-WHATSAPP_PHONE_ID
-WHATSAPP_API_VERSION
-WHATSAPP_VERIFY_TOKEN
-DASHBOARD_PASSWORD
-ADMIN_IDS
+```bash
+npm start
 ```
 
-Never commit `.env`, production credentials, `dist/`, or `node_modules/`. Use `.env.example` as the safe configuration template.
+`npm start` launches a small supervisor that starts all three critical runtime processes from the same Render Web Service:
 
-Before changing the live Render services, run the full resilience suite against a disposable PostgreSQL database.
+| Child process | Purpose |
+| --- | --- |
+| Web/API | Health checks, dashboard, Meta webhook ingestion |
+| Webhook worker | Processes durable `webhook_events` |
+| Outbox worker | Delivers durable `outbox_messages` |
+
+If any critical child exits unexpectedly, the supervisor terminates the remaining children and exits non-zero so Render can restart the whole service. Durable webhook/outbox leases in PostgreSQL allow work to resume after restart.
+
+This is the recommended configuration for a single Render Web Service. Set the Render **Start Command** to `npm start` (or leave it at the package default).
+
+Hosts with dedicated process types can still run the components separately using:
+
+```bash
+npm run start:web
+npm run start:webhook-worker
+npm run start:outbox-worker
+```
+
+Maintenance remains a one-shot command:
+
+```bash
+npm run maintenance
+```
+
+The web process also performs one maintenance reconciliation during cold boot, so restart recovery does not depend on a scheduler. A periodic scheduler is still useful for stale-state cleanup on an always-running service.
+
+Before changing the live Render service, run the full resilience suite against a disposable PostgreSQL database.
