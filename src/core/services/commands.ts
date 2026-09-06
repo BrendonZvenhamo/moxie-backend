@@ -224,7 +224,7 @@ export class CommandHandler {
         await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '⚖️ TERMS OF SERVICE',
-          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie stores limited chat context [...]
+          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie does not store any messages [...]
           buttons: [
             { id: 'accept_terms', text: '✅ I Agree' },
             { id: 'view_help', text: '❓ Help' }
