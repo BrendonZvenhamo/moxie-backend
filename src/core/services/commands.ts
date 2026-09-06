@@ -224,7 +224,7 @@ export class CommandHandler {
         await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '⚖️ TERMS OF SERVICE',
-          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie does not store any messages [...]
+          body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie does not store any messages or personal data on our servers.',
           buttons: [
             { id: 'accept_terms', text: '✅ I Agree' },
             { id: 'view_help', text: '❓ Help' }
@@ -252,7 +252,7 @@ export class CommandHandler {
         await this.send(externalId, adapter.getPlatform(), {
           type: 'buttons',
           title: '🎉 ALL SET!',
-          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nWe minimize stored chat context and do not expose your ide[...]
+          body: 'Ready to chat! Quick Guide:\n1. 🤝 /add - Save as friend\n2. 🛡️ /block - Hide users\n3. 🚪 /stop - End chat\n\nWe minimize stored chat context and do not expose your identity.',
           buttons: [
             { id: 'match_now', text: '🔎 Find Match' },
             { id: 'view_profile', text: '👤 View Profile' }
@@ -452,7 +452,7 @@ export class CommandHandler {
       await this.send(externalId, adapter.getPlatform(), {
         type: 'buttons',
         title: '⚖️ TERMS OF SERVICE',
-        body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie stores limited chat context fo[...]
+        body: 'To keep Moxie safe, you agree to:\n1. Be respectful to others.\n2. No illegal or harmful content.\n3. Messages are anonymous to other users.\n\nMoxie stores limited chat context for support purposes only.',
         buttons: [
           { id: 'accept_terms', text: '✅ I Agree' },
           { id: 'view_help', text: '❓ Help' }
@@ -828,7 +828,7 @@ export class CommandHandler {
     await this.send(externalId, adapter.getPlatform(), {
       type: 'buttons',
       title: '👋 Welcome to Moxie',
-      body: 'Meet someone new without giving them your number, Instagram, or even your name.\n\nMoxie privately matches you with people based on your interests, preferences, and vibe right here on WhatsApp.\n\n🔒 *Your identity stays private*\n✨ *Discover someone you might never have met*\n🛑 *End any conversation whenever you want*\n\nNo profile stalking. No awkward DMs.\n\nJust two people, one conversation, and the chance to see if you click.\n\n*Ready to meet someone new?*',
+      body: 'Meet someone new without giving them your number, Instagram, or even your name.\n\nMoxie privately matches you with people based on your interests, preferences, and vibe right here on WhatsApp or Telegram!',
       buttons: [
         { id: 'start_onboarding', text: '📝 Create Profile' },
         { id: 'view_help', text: '❓ How it works' }
